@@ -4,7 +4,7 @@ A tiny package to give your native HTML tables spreadsheet-style selection, copy
 
 - `core`: geometry, merge/subtract, copy planning, and selection persistence.
 - `dom`: the framework-agnostic enhancer for real `<table>` markup.
-- `react`: a thin React `<table>` wrapper plus a hook for existing table refs.
+- `react`: a React `<table>` component for enhanced tables, plus a hook for existing table refs.
 
 ## For app developers
 
@@ -12,7 +12,7 @@ A tiny package to give your native HTML tables spreadsheet-style selection, copy
 npm install table-steroids
 ```
 
-In React, upgrade your app `<table>` by importing `table-steroids/react` and using the `<TableSteroids>` wrapper.
+In React, import `TableSteroids` from `table-steroids/react` and use it in place of your normal `<table>`.
 
 ```tsx
 import { TableSteroids } from "table-steroids/react";
@@ -56,7 +56,6 @@ enhanceTables(document);
 Enhance any table across the web without installing anything by using a bookmarklet.
 
 <!-- bookmarklet-buttons:start -->
-Most README renderers disable `javascript:` bookmarklet links, so create the bookmark manually:
 
 1. Create a new bookmark in your browser.
 2. Name it `Table Steroids`.
@@ -67,6 +66,7 @@ javascript:(()=>{const d=document;if(!d)return;const toastId="table-steroids-boo
 ```
 
 Use the latest published build with that bookmarklet. For a self-contained local or unpublished build, copy the single line from [`dist/bookmarklet.inline.txt`](./dist/bookmarklet.inline.txt) into the bookmark URL instead.
+
 <!-- bookmarklet-buttons:end -->
 
 ## Accessibility contract

@@ -41,7 +41,9 @@ function addModule(modulePath, modules) {
     return;
   }
 
-  let source = readFileSync(modulePath, "utf8").replace(/^\/\/# sourceMappingURL=.*$/gm, "").trim();
+  let source = readFileSync(modulePath, "utf8")
+    .replace(/^\/\/# sourceMappingURL=.*$/gm, "")
+    .trim();
   const dependencyPaths = [];
 
   source = source.replace(/^import\s+\{([\s\S]*?)\}\s+from\s+"(.+?)";$/gm, (_match, specifiers, specifier) => {
@@ -134,7 +136,6 @@ function updateReadmeBookmarkletSection({ bookmarklet }) {
   }
 
   const section = [
-    "Most README renderers disable `javascript:` bookmarklet links, so create the bookmark manually:",
     "",
     "1. Create a new bookmark in your browser.",
     "2. Name it `Table Steroids`.",
