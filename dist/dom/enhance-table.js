@@ -130,7 +130,12 @@ function createClipboardHtmlCell(model, rowId, columnId) {
         return clipboardCell;
     }
     if (sourceCell.rowId === rowId && sourceCell.columnId === columnId) {
-        clipboardCell.innerHTML = sourceCell.element.innerHTML;
+        try {
+            clipboardCell.innerHTML = sourceCell.element.innerHTML;
+        }
+        catch {
+            clipboardCell.textContent = sourceCell.element.textContent ?? "";
+        }
     }
     return clipboardCell;
 }

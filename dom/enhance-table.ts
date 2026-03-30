@@ -210,7 +210,11 @@ function createClipboardHtmlCell(model: DOMTableModel, rowId: string, columnId: 
   }
 
   if (sourceCell.rowId === rowId && sourceCell.columnId === columnId) {
-    clipboardCell.innerHTML = sourceCell.element.innerHTML;
+    try {
+      clipboardCell.innerHTML = sourceCell.element.innerHTML;
+    } catch {
+      clipboardCell.textContent = sourceCell.element.textContent ?? "";
+    }
   }
 
   return clipboardCell;
