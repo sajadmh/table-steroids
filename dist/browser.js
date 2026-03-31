@@ -874,7 +874,7 @@ function createClipboardHtmlCell(model, rowId, columnId) {
     }
     if (sourceCell.rowId === rowId && sourceCell.columnId === columnId) {
         try {
-            clipboardCell.innerHTML = sourceCell.element.innerHTML;
+            clipboardCell.append(...Array.from(sourceCell.element.childNodes, (node) => node.cloneNode(true)));
         }
         catch {
             clipboardCell.textContent = sourceCell.element.textContent ?? "";
