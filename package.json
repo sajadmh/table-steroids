@@ -1,6 +1,6 @@
 {
   "name": "table-steroids",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Spreadsheet-style selection, copy, and range superpowers for native HTML tables.",
   "repository": {
     "type": "git",
@@ -33,7 +33,14 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist",
+    "dist/*.js",
+    "dist/*.js.map",
+    "dist/*.d.ts",
+    "dist/*.d.ts.map",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map",
     "README.md"
   ],
   "peerDependencies": {

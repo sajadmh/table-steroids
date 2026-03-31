@@ -6,6 +6,7 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const distDir = path.join(rootDir, "dist");
 const packageJson = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf8"));
 const versionTag = `v${packageJson.version}`;
+const repositoryUrl = normalizeRepositoryUrl(packageJson.repository?.url ?? "");
 
 const browserBundle = buildBundle(path.join(distDir, "browser-runtime.js"));
 const bookmarkletLoader = `${browserBundle};${buildBookmarkletLoaderRuntime(versionTag)}\n`;
@@ -17,12 +18,11 @@ const bookmarklet = buildBookmarklet(
   `https://cdn.jsdelivr.net/npm/${packageJson.name}/dist/bookmarklet-loader.js`,
   bookmarkletLoader,
 );
-const inlineBookmarklet = buildInlineBookmarklet(bookmarkletLoader);
 
 writeFileSync(path.join(distDir, "bookmarklet.txt"), `${bookmarklet}\n`, "utf8");
-writeFileSync(path.join(distDir, "bookmarklet.inline.txt"), `${inlineBookmarklet}\n`, "utf8");
+rmSync(path.join(distDir, "bookmarklet.inline.txt"), { force: true });
 rmSync(path.join(distDir, "bookmarklet.github.txt"), { force: true });
-updateReadmeBookmarkletSection({ bookmarklet });
+updateReadmeBookmarkletSection({ repositoryUrl });
 
 function buildBundle(entryPath) {
   const modules = new Map();
@@ -105,7 +105,7 @@ function transformSpecifiers(specifiers) {
 }
 
 function buildBookmarkletLoaderRuntime(versionTag) {
-  return `(()=>{const g=globalThis;const d=g.document;if(!d)return;const versionTag=${JSON.stringify(versionTag)};const repoUrl="https://github.com/sajadmh/table-steroids";const subtitleColor="rgba(255,255,255,0.65)";const subtitleFont="500 11px/1.2 system-ui,sans-serif";const sourceKey="__tableSteroidsBookmarkletSource__";const sourceType=g[sourceKey]==="external"?"external":g[sourceKey]==="inline"?"inline":"fallback";const sourceValue=sourceType==="external"?"latest version":sourceType==="inline"?"inline bundled version":"offline version";const statusColor=sourceType==="external"?"rgb(34,197,94)":sourceType==="inline"?"rgb(148,163,184)":"rgb(250,204,21)";try{g.console?.info?.("[Table Steroids] Activated", { version: versionTag, source: sourceValue });}catch{}g.TableSteroids?.togglePage();const enabled=!!g.__tableSteroidsPageHandle__;const toastId="table-steroids-bookmarklet-toast";const existing=d.getElementById(toastId);if(existing){const timeoutId=Number(existing.getAttribute("data-timeout-id")||"0");if(timeoutId){g.clearTimeout(timeoutId);}existing.remove();}const toast=d.createElement("div");toast.id=toastId;toast.setAttribute("role","status");toast.setAttribute("aria-live","polite");const label=d.createElement("div");label.textContent=enabled?"Table steroids enabled":"Table steroids disabled";label.style.font="600 14px/1.25 system-ui,sans-serif";const version=d.createElement("div");version.style.font=subtitleFont;version.style.color=subtitleColor;version.style.display="inline-flex";version.style.alignItems="center";version.style.gap="6px";const statusDot=d.createElement("span");statusDot.style.width="8px";statusDot.style.height="8px";statusDot.style.borderRadius="9999px";statusDot.style.backgroundColor=statusColor;statusDot.style.flexShrink="0";version.append(statusDot);if(sourceType==="fallback"){const offlineLink=d.createElement("a");offlineLink.textContent="offline version";offlineLink.href=repoUrl;offlineLink.target="_blank";offlineLink.rel="noreferrer noopener";offlineLink.style.color=subtitleColor;offlineLink.style.font=subtitleFont;offlineLink.style.textDecoration="underline";offlineLink.style.textDecorationColor=subtitleColor;offlineLink.style.pointerEvents="auto";const separator=d.createElement("span");separator.textContent=" • ";const versionText=d.createElement("span");versionText.textContent=versionTag;version.append(offlineLink,separator,versionText);}else{const versionText=d.createElement("span");versionText.textContent=sourceType==="external"?"latest version":\`\${versionTag} inline bundled version\`;version.append(versionText);}toast.append(label,version);toast.style.position="fixed";toast.style.top="16px";toast.style.left="50%";toast.style.transform="translateX(-50%)";toast.style.padding="8px 14px";toast.style.borderRadius="10px";toast.style.background="rgba(17,24,39,0.92)";toast.style.color="#fff";toast.style.boxShadow="0 10px 30px rgba(0,0,0,0.2)";toast.style.zIndex="2147483647";toast.style.pointerEvents=sourceType==="fallback"?"auto":"none";toast.style.maxWidth="calc(100vw - 32px)";toast.style.textAlign="center";toast.style.overflow="hidden";(d.body||d.documentElement).appendChild(toast);const timeoutId=g.setTimeout(()=>{toast.remove();},5000);toast.setAttribute("data-timeout-id",String(timeoutId));delete g[sourceKey];})();`;
+  return `(()=>{const g=globalThis;const d=g.document;if(!d)return;const versionTag=${JSON.stringify(versionTag)};const repoUrl="https://github.com/sajadmh/table-steroids";const subtitleColor="rgba(255,255,255,0.65)";const subtitleFont="500 11px/1.2 system-ui,sans-serif";const sourceKey="__tableSteroidsBookmarkletSource__";const sourceType=g[sourceKey]==="external"?"external":"fallback";const sourceValue=sourceType==="external"?"latest version":"offline version";const statusColor=sourceType==="external"?"rgb(34,197,94)":"rgb(250,204,21)";try{g.console?.info?.("[Table Steroids] Activated", { version: versionTag, source: sourceValue });}catch{}g.TableSteroids?.togglePage();const enabled=!!g.__tableSteroidsPageHandle__;const toastId="table-steroids-bookmarklet-toast";const existing=d.getElementById(toastId);if(existing){const timeoutId=Number(existing.getAttribute("data-timeout-id")||"0");if(timeoutId){g.clearTimeout(timeoutId);}existing.remove();}const toast=d.createElement("div");toast.id=toastId;toast.setAttribute("role","status");toast.setAttribute("aria-live","polite");const label=d.createElement("div");label.textContent=enabled?"Table steroids enabled":"Table steroids disabled";label.style.font="600 14px/1.25 system-ui,sans-serif";const version=d.createElement("div");version.style.font=subtitleFont;version.style.color=subtitleColor;version.style.display="inline-flex";version.style.alignItems="center";version.style.gap="6px";const statusDot=d.createElement("span");statusDot.style.width="8px";statusDot.style.height="8px";statusDot.style.borderRadius="9999px";statusDot.style.backgroundColor=statusColor;statusDot.style.flexShrink="0";version.append(statusDot);if(sourceType==="fallback"){const offlineLink=d.createElement("a");offlineLink.textContent="offline version";offlineLink.href=repoUrl;offlineLink.target="_blank";offlineLink.rel="noreferrer noopener";offlineLink.style.color=subtitleColor;offlineLink.style.font=subtitleFont;offlineLink.style.textDecoration="underline";offlineLink.style.textDecorationColor=subtitleColor;offlineLink.style.pointerEvents="auto";const separator=d.createElement("span");separator.textContent=" • ";const versionText=d.createElement("span");versionText.textContent=versionTag;version.append(offlineLink,separator,versionText);}else{const versionText=d.createElement("span");versionText.textContent="latest version";version.append(versionText);}toast.append(label,version);toast.style.position="fixed";toast.style.top="16px";toast.style.left="50%";toast.style.transform="translateX(-50%)";toast.style.padding="8px 14px";toast.style.borderRadius="10px";toast.style.background="rgba(17,24,39,0.92)";toast.style.color="#fff";toast.style.boxShadow="0 10px 30px rgba(0,0,0,0.2)";toast.style.zIndex="2147483647";toast.style.pointerEvents=sourceType==="fallback"?"auto":"none";toast.style.maxWidth="calc(100vw - 32px)";toast.style.textAlign="center";toast.style.overflow="hidden";(d.body||d.documentElement).appendChild(toast);const timeoutId=g.setTimeout(()=>{toast.remove();},5000);toast.setAttribute("data-timeout-id",String(timeoutId));delete g[sourceKey];})();`;
 }
 
 function buildBookmarklet(scriptUrl, fallbackSource) {
@@ -116,10 +116,6 @@ function buildBookmarklet(scriptUrl, fallbackSource) {
   )}):${JSON.stringify(scriptUrl)};s.src=scriptSrc;s.async=true;target.appendChild(s);}catch(error){runFallback(error);}})();`;
 }
 
-function buildInlineBookmarklet(source) {
-  return `javascript:(()=>{globalThis.__tableSteroidsBookmarkletSource__="inline";${flattenJavaScript(source)}})();`;
-}
-
 function flattenJavaScript(source) {
   return source
     .trim()
@@ -128,13 +124,18 @@ function flattenJavaScript(source) {
     .join("");
 }
 
-function updateReadmeBookmarkletSection({ bookmarklet }) {
+function normalizeRepositoryUrl(repositoryUrl) {
+  return repositoryUrl.replace(/^git\+/, "").replace(/\.git$/, "");
+}
+
+function updateReadmeBookmarkletSection({ repositoryUrl }) {
   const readmePath = path.join(rootDir, "README.md");
   const startMarker = "<!-- bookmarklet-buttons:start -->";
   const endMarker = "<!-- bookmarklet-buttons:end -->";
   const readme = readFileSync(readmePath, "utf8");
   const startIndex = readme.indexOf(startMarker);
   const endIndex = readme.indexOf(endMarker);
+  const bookmarkletUrl = `${repositoryUrl}/blob/main/dist/bookmarklet.txt`;
 
   if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
     throw new Error("README.md is missing bookmarklet button markers.");
@@ -144,15 +145,11 @@ function updateReadmeBookmarkletSection({ bookmarklet }) {
     "",
     "1. Create a new bookmark in your browser.",
     "2. Name it `Table Steroids`.",
-    "3. Paste this into the bookmark URL or location field:",
-    "",
-    "```text",
-    bookmarklet,
-    "```",
+    `3. Open [\`dist/bookmarklet.txt\`](${bookmarkletUrl}) and copy its contents into the bookmark URL or location field.`,
     "",
     "That bookmarklet tries the latest published build first, then falls back to the embedded build if the page blocks external scripts.",
     "It should report `latest version` when the CDN loader runs and show a linked `offline version` label with the bundled version when it falls back.",
-    "If you do not want script injection at all, copy the inline-only version from [`dist/bookmarklet.inline.txt`](./dist/bookmarklet.inline.txt) into the bookmark URL instead; that variant reports `inline bundled version`.",
+    "The generated bookmarklet file lives in the repository so app developers using `npm i table-steroids` do not download the full bookmarklet text payload.",
     "If both the external loader and the embedded fallback are blocked, the bookmarklet will show `Script not allowed.`.",
   ].join("\n");
 
