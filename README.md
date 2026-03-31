@@ -61,10 +61,8 @@ Enhance any table across the web without installing anything by using a bookmark
 2. Name it `Table Steroids`.
 3. Open [`dist/bookmarklet.txt`](https://github.com/sajadmh/table-steroids/blob/main/dist/bookmarklet.txt) and copy its contents into the bookmark URL or location field.
 
-That bookmarklet tries the latest published build first, then falls back to the embedded build if the page blocks external scripts.
-It should report `latest version` when the CDN loader runs and show a linked `offline version` label with the bundled version when it falls back.
-The generated bookmarklet file lives in the repository so app developers using `npm i table-steroids` do not download the full bookmarklet text payload.
-If both the external loader and the embedded fallback are blocked, the bookmarklet will show `Script not allowed.`.
+That bookmarklet tries the latest published script first, then falls back to the embedded script within the bookmark if the page blocks external scripts.
+It should report `latest version` when the CDN loader runs and show an `offline version` label if it falls back on the embedded script.
 
 ## Accessibility contract
 
