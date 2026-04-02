@@ -12,7 +12,10 @@ function enablePage(options = {}) {
     }
     const browserGlobal = getBrowserGlobal();
     browserGlobal[PAGE_HANDLE_GLOBAL_KEY]?.destroy();
-    const handle = enhanceTables(document, options);
+    const handle = enhanceTables(document, {
+        ...options,
+        interactionMode: "desktop",
+    });
     browserGlobal[PAGE_HANDLE_GLOBAL_KEY] = handle;
     return handle;
 }

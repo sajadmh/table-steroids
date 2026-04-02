@@ -1,6 +1,6 @@
 {
   "name": "table-steroids",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Spreadsheet-style selection, copy, and range superpowers for native HTML tables.",
   "repository": {
     "type": "git",

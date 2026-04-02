@@ -51,18 +51,23 @@ enhanceTable(document.querySelector("table")!);
 enhanceTables(document);
 ```
 
+The npm package is designed for desktop and mobile web. By default it auto-selects a desktop or touch interaction model at runtime.
+
 ## For non-developers
 
-Enhance any table across the web without installing anything by using a bookmarklet.
+Enhance any table across the web without installing anything by using a bookmarklet. The bookmarklet is desktop-only.
 
 [Visit this page](http://localhost:9001/2026/table#for-everyone) to drag and drop the bookmarklet onto your bookmarks bar.
 
+Or set up a bookmarklet manually:
+
 1. Create a new bookmark in your browser.
 2. Name it `Table Steroids`.
-3. Open [`dist/bookmarklet.txt`](https://github.com/sajadmh/table-steroids/blob/main/dist/bookmarklet.txt) and copy its contents into the bookmark URL or location field.
+3. Open [`dist/bookmarklet.txt`](https://github.com/sajadmh/table-steroids/blob/main/dist/bookmarklet.txt) and copy its contents into the bookmark URL or location field. Make sure that the URL starts with `javascript:`.
 
-That bookmarklet tries the latest published script first, then falls back to the embedded script within the bookmark if the page blocks external scripts.
-It should report `latest version` when the CDN loader runs and show an `offline version` label if it falls back on the embedded script.
+The bookmarklet tries the latest published build first, then falls back to the embedded build if the page blocks external scripts.
+If the page blocks both paths, the bookmarklet will show `Script not allowed.`.
+Once used, the popup will show `latest version` or `offline version` depending on if the page blocks the script.
 
 ## Accessibility contract
 
@@ -71,9 +76,17 @@ It should report `latest version` when the CDN loader runs and show an `offline 
 - Interactive descendants like links, buttons, inputs, selects, textareas, `[contenteditable='true']`, and `[data-spreadsheet-ignore]` regions are not hijacked.
 - The package intentionally relies on the overlay for visual selection state, rather than adding intrusive per-cell border styles.
 
+## Interaction modes
+
+- `interactionMode: "auto"` is the default for the npm package. It resolves to desktop or touch behavior at runtime.
+- `interactionMode: "desktop"` keeps keyboard navigation, modifier-based multi-range selection, and copy shortcuts.
+- `interactionMode: "touch"` keeps selection lightweight for phones and tablets: tap to select and drag to expand a range.
+- The bookmarklet always uses desktop mode.
+
 ## Supported behaviors
 
 - Click-to-select and drag-to-select
+- Tap-to-select and drag-to-select on touch devices
 - Cmd/Ctrl additive and subtractive multi-range selection
 - Arrow-key navigation plus Shift+arrow range expansion
 - Honest clipboard behavior for single, horizontal, vertical, and irregular multi-range copies, including HTML table payloads when the browser allows it

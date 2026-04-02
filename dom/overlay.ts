@@ -26,7 +26,7 @@ export const DEFAULT_OVERLAY_THEME: SpreadsheetOverlayTheme = {
   selectionStroke: "rgb(27 114 232)",
   copiedOutline: "rgb(27 114 232)",
   copiedOutlineWidth: 1.5,
-  zIndex: 2147483000,
+  zIndex: 40,
 };
 
 /**

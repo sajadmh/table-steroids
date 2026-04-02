@@ -1,8 +1,10 @@
 import type { Selection } from "../core/types.js";
+import { type ResolvedTableSpreadsheetInteractionMode, type TableSpreadsheetInteractionMode } from "./interaction-mode.js";
 import { type SpreadsheetOverlayTheme } from "./overlay.js";
 export interface TableSpreadsheetOptions {
     allowCellSelection?: boolean;
     allowRangeSelection?: boolean;
+    interactionMode?: TableSpreadsheetInteractionMode;
     observeMutations?: boolean;
     onSelectionChange?: (selections: Selection[], activeSelection: Selection | null) => void;
     onSelectionCopy?: (text: string, selections: Selection[]) => void;
@@ -15,6 +17,7 @@ export interface TableSpreadsheetHandle {
     clearSelection(): void;
     getSelections(): Selection[];
     getActiveSelection(): Selection | null;
+    getInteractionMode(): ResolvedTableSpreadsheetInteractionMode;
     copySelection(): Promise<boolean>;
 }
 export interface TableSpreadsheetCollectionHandle {

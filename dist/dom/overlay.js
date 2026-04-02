@@ -3,7 +3,7 @@ export const DEFAULT_OVERLAY_THEME = {
     selectionStroke: "rgb(27 114 232)",
     copiedOutline: "rgb(27 114 232)",
     copiedOutlineWidth: 1.5,
-    zIndex: 2147483000,
+    zIndex: 40,
 };
 /**
  * Applies absolute positioning styles for one overlay rectangle.
