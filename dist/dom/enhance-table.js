@@ -244,14 +244,19 @@ function buildClipboardHtml(plan, model) {
 /**
  * Measures the painted pixel edges for a table cell.
  */
-function getMeasuredCellEdges(cell) {
+function getMeasuredCellEdges(cell, overlayHost = null) {
     const cellRect = cell.getBoundingClientRect();
     const rowRect = cell.parentElement instanceof HTMLTableRowElement ? cell.parentElement.getBoundingClientRect() : null;
+    const rootRect = overlayHost?.getBoundingClientRect() ?? null;
+    const scrollLeft = overlayHost?.scrollLeft ?? 0;
+    const scrollTop = overlayHost?.scrollTop ?? 0;
+    const viewportLeftOffset = rootRect ? rootRect.left - scrollLeft : 0;
+    const viewportTopOffset = rootRect ? rootRect.top - scrollTop : 0;
     return {
-        left: Math.floor(cellRect.left),
-        top: Math.floor(Math.min(cellRect.top, rowRect?.top ?? cellRect.top)),
-        right: Math.ceil(cellRect.right),
-        bottom: Math.ceil(Math.max(cellRect.bottom, rowRect?.bottom ?? cellRect.bottom)),
+        left: Math.floor(cellRect.left - viewportLeftOffset),
+        top: Math.floor(Math.min(cellRect.top, rowRect?.top ?? cellRect.top) - viewportTopOffset),
+        right: Math.ceil(cellRect.right - viewportLeftOffset),
+        bottom: Math.ceil(Math.max(cellRect.bottom, rowRect?.bottom ?? cellRect.bottom) - viewportTopOffset),
     };
 }
 /**
@@ -270,7 +275,7 @@ function cellIntersectsSelectionBounds(cell, bounds, rowIndexMap, columnIndexMap
 /**
  * Measures the on-screen rectangle covered by a logical selection.
  */
-function getOverlayRect(selection, model, rowIndexMap, columnIndexMap) {
+function getOverlayRect(selection, model, rowIndexMap, columnIndexMap, overlayHost = null) {
     const bounds = getSelectionBounds(selection, rowIndexMap, columnIndexMap);
     if (!bounds) {
         return null;
@@ -280,14 +285,14 @@ function getOverlayRect(selection, model, rowIndexMap, columnIndexMap) {
         return null;
     }
     const selectionEdges = selectedCells.reduce((edges, cell) => {
-        const measuredEdges = getMeasuredCellEdges(cell.element);
+        const measuredEdges = getMeasuredCellEdges(cell.element, overlayHost);
         return {
             left: Math.min(edges.left, measuredEdges.left),
             top: Math.min(edges.top, measuredEdges.top),
             right: Math.max(edges.right, measuredEdges.right),
             bottom: Math.max(edges.bottom, measuredEdges.bottom),
         };
-    }, getMeasuredCellEdges(selectedCells[0].element));
+    }, getMeasuredCellEdges(selectedCells[0].element, overlayHost));
     const width = selectionEdges.right - selectionEdges.left;
     const height = selectionEdges.bottom - selectionEdges.top;
     if (width <= 0 || height <= 0) {
@@ -299,6 +304,125 @@ function getOverlayRect(selection, model, rowIndexMap, columnIndexMap) {
         width,
         height,
     };
+}
+/**
+ * Checks whether an overflow value creates a clipping boundary for descendants.
+ */
+function isClippingOverflowValue(value) {
+    return value === "auto" || value === "scroll" || value === "hidden" || value === "clip";
+}
+/**
+ * Resolves the overflow styles that can clip a table in the host app.
+ */
+function getElementOverflowStyles(element) {
+    const computedStyle = typeof window.getComputedStyle === "function"
+        ? window.getComputedStyle(element)
+        : typeof globalThis.getComputedStyle === "function"
+            ? globalThis.getComputedStyle(element)
+            : null;
+    return {
+        overflowX: computedStyle?.overflowX || element.style.overflowX || element.style.overflow || "",
+        overflowY: computedStyle?.overflowY || element.style.overflowY || element.style.overflow || "",
+    };
+}
+/**
+ * Intersects two viewport-positioned clipping rectangles.
+ */
+function intersectClipRects(first, second) {
+    const nextClipRect = {
+        top: Math.max(first.top, second.top),
+        right: Math.min(first.right, second.right),
+        bottom: Math.min(first.bottom, second.bottom),
+        left: Math.max(first.left, second.left),
+    };
+    if (nextClipRect.right <= nextClipRect.left || nextClipRect.bottom <= nextClipRect.top) {
+        return null;
+    }
+    return nextClipRect;
+}
+/**
+ * Finds the nearest ancestor whose overflow clips the table; mounting there makes the overlay follow elastic scroll.
+ */
+function getOverlayHost(table) {
+    let ancestor = table.parentElement;
+    while (ancestor) {
+        const { overflowX, overflowY } = getElementOverflowStyles(ancestor);
+        if (isClippingOverflowValue(overflowX) || isClippingOverflowValue(overflowY)) {
+            return ancestor;
+        }
+        ancestor = ancestor.parentElement;
+    }
+    return null;
+}
+/**
+ * Converts one viewport rect into the local coordinate space of the overlay host's scrollable content.
+ */
+function getLocalClipRect(rect, overlayHost) {
+    const hostRect = overlayHost.getBoundingClientRect();
+    const leftOffset = hostRect.left - overlayHost.scrollLeft;
+    const topOffset = hostRect.top - overlayHost.scrollTop;
+    return {
+        top: rect.top - topOffset,
+        right: rect.right - leftOffset,
+        bottom: rect.bottom - topOffset,
+        left: rect.left - leftOffset,
+    };
+}
+/**
+ * Computes the viewport area where table-steroids overlay geometry is allowed to paint.
+ */
+function getOverlayClipRect(table, overlayHost = null) {
+    const tableRect = table.getBoundingClientRect();
+    const hostRect = overlayHost?.getBoundingClientRect() ?? null;
+    const viewportClipRect = {
+        top: overlayHost?.scrollTop ?? 0,
+        right: overlayHost
+            ? overlayHost.scrollLeft + (overlayHost.clientWidth || hostRect?.width || 0)
+            : typeof window.innerWidth === "number"
+                ? window.innerWidth
+                : Number.POSITIVE_INFINITY,
+        bottom: overlayHost
+            ? overlayHost.scrollTop + (overlayHost.clientHeight || hostRect?.height || 0)
+            : typeof window.innerHeight === "number"
+                ? window.innerHeight
+                : Number.POSITIVE_INFINITY,
+        left: overlayHost?.scrollLeft ?? 0,
+    };
+    const tableClipRect = overlayHost
+        ? getLocalClipRect(tableRect, overlayHost)
+        : {
+            top: tableRect.top,
+            right: tableRect.right,
+            bottom: tableRect.bottom,
+            left: tableRect.left,
+        };
+    let clipRect = intersectClipRects(viewportClipRect, tableClipRect);
+    if (!clipRect) {
+        return null;
+    }
+    let ancestor = table.parentElement;
+    while (ancestor) {
+        const { overflowX, overflowY } = getElementOverflowStyles(ancestor);
+        if (isClippingOverflowValue(overflowX) || isClippingOverflowValue(overflowY)) {
+            const ancestorRect = ancestor.getBoundingClientRect();
+            clipRect = intersectClipRects(clipRect, overlayHost
+                ? getLocalClipRect(ancestorRect, overlayHost)
+                : {
+                    top: ancestorRect.top,
+                    right: ancestorRect.right,
+                    bottom: ancestorRect.bottom,
+                    left: ancestorRect.left,
+                });
+            if (!clipRect) {
+                return null;
+            }
+        }
+        if (ancestor === overlayHost) {
+            break;
+        }
+        ancestor = ancestor.parentElement;
+    }
+    return clipRect;
 }
 /**
  * Enhances one table element with spreadsheet-style selection behavior.
@@ -315,7 +439,8 @@ export function enhanceTable(table, options = {}) {
     const activationMode = options.activationMode ?? "pointerdown";
     const observeMutations = options.observeMutations ?? true;
     const plugins = options.plugins ?? [];
-    const overlay = new SelectionOverlay(options.overlay);
+    const overlayHost = getOverlayHost(table);
+    const overlay = new SelectionOverlay(options.overlay, overlayHost ?? undefined);
     const managedCells = new Map();
     const cellByElement = new WeakMap();
     const modelBuildOptions = {
@@ -540,7 +665,7 @@ export function enhanceTable(table, options = {}) {
     const renderOverlay = () => {
         const selectionRects = selectionRanges
             .map((selection) => {
-            const rect = getOverlayRect(selection, model, rowIndexMap, columnIndexMap);
+            const rect = getOverlayRect(selection, model, rowIndexMap, columnIndexMap, overlayHost);
             if (!rect) {
                 return null;
             }
@@ -551,8 +676,9 @@ export function enhanceTable(table, options = {}) {
         })
             .filter((rect) => rect !== null);
         const copiedRects = selectionRects.filter((rect) => copiedSelectionKeys.includes(rect.key));
-        const nextDragRect = dragState ? getOverlayRect(dragState.selection, model, rowIndexMap, columnIndexMap) : null;
-        overlay.render(selectionRects, copiedRects, nextDragRect ? { key: "drag-selection", ...nextDragRect } : null);
+        const nextDragRect = dragState ? getOverlayRect(dragState.selection, model, rowIndexMap, columnIndexMap, overlayHost) : null;
+        const clipRect = getOverlayClipRect(table, overlayHost);
+        overlay.render(selectionRects, copiedRects, nextDragRect ? { key: "drag-selection", ...nextDragRect } : null, clipRect);
     };
     /**
      * Schedules one overlay render on the next animation frame.
@@ -561,10 +687,15 @@ export function enhanceTable(table, options = {}) {
         if (frameId !== null) {
             return;
         }
-        frameId = window.requestAnimationFrame(() => {
+        let didRunSynchronously = false;
+        const nextFrameId = window.requestAnimationFrame(() => {
+            didRunSynchronously = true;
             frameId = null;
             renderOverlay();
         });
+        if (!didRunSynchronously) {
+            frameId = nextFrameId;
+        }
     };
     /**
      * Rebuilds the table model and restores selection state against the new structure.

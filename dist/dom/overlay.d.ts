@@ -24,14 +24,17 @@ export declare class SelectionOverlay {
     private fillLayer;
     private ringLayer;
     private theme;
+    private host;
+    private mode;
+    private previousHostPosition;
     /**
      * Creates the overlay root and its rendering layers.
      */
-    constructor(theme?: Partial<SpreadsheetOverlayTheme>);
+    constructor(theme?: Partial<SpreadsheetOverlayTheme>, host?: HTMLElement);
     /**
      * Renders committed selections, copied outlines, and an optional drag preview.
      */
-    render(selectionRects: OverlayRect[], copiedRects: OverlayRect[], dragRect: OverlayRect | null): void;
+    render(selectionRects: OverlayRect[], copiedRects: OverlayRect[], dragRect: OverlayRect | null, clipRect?: OverlayClipRect | null): void;
     /**
      * Removes the overlay from the document.
      */

@@ -37,6 +37,8 @@ class FakeEvent {
 
 class FakeWindow {
   private listeners = new Map<string, Set<Listener>>();
+  innerWidth = 1024;
+  innerHeight = 768;
 
   addEventListener(type: string, listener: Listener) {
     this.listeners.get(type)?.add(listener) ?? this.listeners.set(type, new Set([listener]));
@@ -53,6 +55,10 @@ class FakeWindow {
 
   matchMedia() {
     return { matches: false };
+  }
+
+  getComputedStyle(element: FakeElement) {
+    return element.style;
   }
 
   requestAnimationFrame(callback: FrameRequestCallback) {
@@ -150,6 +156,12 @@ class FakeElement {
   innerText = "";
   isConnected = false;
   id = "";
+  scrollLeft = 0;
+  scrollTop = 0;
+  scrollWidth = 0;
+  scrollHeight = 0;
+  clientWidth = 0;
+  clientHeight = 0;
   private attributes = new Map<string, string>();
   private listeners = new Map<string, Set<Listener>>();
   private rect: Rect = {
@@ -329,6 +341,10 @@ class FakeElement {
 
   setBoundingClientRect(rect: Rect) {
     this.rect = rect;
+    this.clientWidth = rect.width;
+    this.clientHeight = rect.height;
+    this.scrollWidth = Math.max(this.scrollWidth, rect.width);
+    this.scrollHeight = Math.max(this.scrollHeight, rect.height);
   }
 
   getBoundingClientRect() {
@@ -425,6 +441,7 @@ function installFakeDom() {
     HTMLTableCellElement: globalThis.HTMLTableCellElement,
     MutationObserver: globalThis.MutationObserver,
     ResizeObserver: globalThis.ResizeObserver,
+    getComputedStyle: globalThis.getComputedStyle,
   };
   const document = new FakeDocument();
   const window = new FakeWindow();
@@ -440,6 +457,7 @@ function installFakeDom() {
     HTMLTableCellElement: FakeHTMLTableCellElement,
     MutationObserver: FakeMutationObserver,
     ResizeObserver: FakeResizeObserver,
+    getComputedStyle: (element: FakeElement) => window.getComputedStyle(element),
   });
 
   return {
@@ -505,6 +523,7 @@ function createTableFixture(document: FakeDocument) {
   const secondCell = document.createElement("td") as FakeHTMLTableCellElement;
 
   row.setBoundingClientRect({ left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20 });
+  table.setBoundingClientRect({ left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20 });
   firstCell.setBoundingClientRect({ left: 0, top: 0, right: 50, bottom: 20, width: 50, height: 20 });
   secondCell.setBoundingClientRect({ left: 50, top: 0, right: 100, bottom: 20, width: 50, height: 20 });
 
@@ -535,6 +554,7 @@ function createGridTableFixture(document: FakeDocument) {
 
   firstRow.setBoundingClientRect({ left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20 });
   secondRow.setBoundingClientRect({ left: 0, top: 20, right: 100, bottom: 40, width: 100, height: 20 });
+  table.setBoundingClientRect({ left: 0, top: 0, right: 100, bottom: 40, width: 100, height: 40 });
   topLeft.setBoundingClientRect({ left: 0, top: 0, right: 50, bottom: 20, width: 50, height: 20 });
   topRight.setBoundingClientRect({ left: 50, top: 0, right: 100, bottom: 20, width: 50, height: 20 });
   bottomLeft.setBoundingClientRect({ left: 0, top: 20, right: 50, bottom: 40, width: 50, height: 20 });
@@ -576,6 +596,7 @@ function createColSpanTableFixture(document: FakeDocument) {
   spanningCell.colSpan = 2;
   firstRow.setBoundingClientRect({ left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20 });
   secondRow.setBoundingClientRect({ left: 0, top: 20, right: 100, bottom: 40, width: 100, height: 20 });
+  table.setBoundingClientRect({ left: 0, top: 0, right: 100, bottom: 40, width: 100, height: 40 });
   spanningCell.setBoundingClientRect({ left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20 });
   bottomLeft.setBoundingClientRect({ left: 0, top: 20, right: 50, bottom: 40, width: 50, height: 20 });
   bottomRight.setBoundingClientRect({ left: 50, top: 20, right: 100, bottom: 40, width: 50, height: 20 });
@@ -594,6 +615,26 @@ function createColSpanTableFixture(document: FakeDocument) {
       bottomRight,
     },
   };
+}
+
+function getOverlayRoot(document: FakeDocument) {
+  const walk = (element: FakeElement): FakeHTMLElement | undefined => {
+    if (element.getAttribute("aria-hidden") === "true") {
+      return element as FakeHTMLElement;
+    }
+
+    for (const child of element.childNodes) {
+      const match = walk(child);
+
+      if (match) {
+        return match;
+      }
+    }
+
+    return undefined;
+  };
+
+  return walk(document.body);
 }
 
 test("enhanceTable waits to capture desktop pointer drags until the drag threshold is crossed", async () => {
@@ -629,6 +670,42 @@ test("enhanceTable waits to capture desktop pointer drags until the drag thresho
       start: { rowId: "row-0", columnId: "column-0" },
       end: { rowId: "row-0", columnId: "column-1" },
     });
+  } finally {
+    restore();
+  }
+});
+
+test("enhanceTable clips overlay rectangles to scrolling ancestors", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table, cells } = createGridTableFixture(document);
+    const scroller = document.createElement("div") as FakeHTMLElement;
+
+    table.remove();
+    scroller.style.overflow = "auto";
+    scroller.setBoundingClientRect({ left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30 });
+    scroller.scrollHeight = 40;
+    scroller.appendChild(table);
+    document.body.appendChild(scroller);
+
+    enhanceTable(table, { interactionMode: "desktop", observeMutations: false });
+    clickCell(table, cells.topLeft);
+    clickCell(table, cells.bottomRight, { shiftKey: true });
+
+    const overlayRoot = getOverlayRoot(document);
+    const fillLayer = overlayRoot?.childNodes[0];
+    const selectionFill = fillLayer?.childNodes[0];
+
+    assert.equal(overlayRoot?.parentElement, scroller);
+    assert.equal(scroller.style.position, "relative");
+    assert.equal(overlayRoot?.style.position, "absolute");
+    assert.equal(overlayRoot?.style.clipPath, "inset(0px 0px 10px 0px)");
+    assert.equal(selectionFill?.style.left, "0px");
+    assert.equal(selectionFill?.style.top, "0px");
+    assert.equal(selectionFill?.style.width, "100px");
+    assert.equal(selectionFill?.style.height, "30px");
   } finally {
     restore();
   }
