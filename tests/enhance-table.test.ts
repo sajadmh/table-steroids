@@ -711,6 +711,90 @@ test("enhanceTable clips overlay rectangles to scrolling ancestors", async () =>
   }
 });
 
+function roundTable(table: FakeHTMLTableElement, radius = "8px") {
+  table.style.borderTopLeftRadius = radius;
+  table.style.borderTopRightRadius = radius;
+  table.style.borderBottomRightRadius = radius;
+  table.style.borderBottomLeftRadius = radius;
+}
+
+function getSelectionFill(document: FakeDocument) {
+  const overlayRoot = getOverlayRoot(document);
+  const fillLayer = overlayRoot?.childNodes[0];
+
+  return fillLayer?.childNodes[0];
+}
+
+test("enhanceTable rounds the selection corners that meet a rounded table edge", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table, cells } = createGridTableFixture(document);
+
+    roundTable(table);
+    enhanceTable(table, { interactionMode: "desktop", observeMutations: false });
+
+    // Selecting the whole grid puts every selection corner at a table corner.
+    clickCell(table, cells.topLeft);
+    clickCell(table, cells.bottomRight, { shiftKey: true });
+    assert.equal(getSelectionFill(document)?.style.borderRadius, "8px 8px 8px 8px");
+
+    // A single corner cell only rounds the matching corner.
+    clickCell(table, cells.topLeft);
+    assert.equal(getSelectionFill(document)?.style.borderRadius, "8px 0 0 0");
+
+    clickCell(table, cells.bottomRight);
+    assert.equal(getSelectionFill(document)?.style.borderRadius, "0 0 8px 0");
+  } finally {
+    restore();
+  }
+});
+
+test("enhanceTable leaves the selection square when the table is not rounded", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table, cells } = createGridTableFixture(document);
+
+    enhanceTable(table, { interactionMode: "desktop", observeMutations: false });
+    clickCell(table, cells.topLeft);
+    clickCell(table, cells.bottomRight, { shiftKey: true });
+
+    assert.equal(getSelectionFill(document)?.style.borderRadius ?? "", "");
+  } finally {
+    restore();
+  }
+});
+
+test("enhanceTable drops rounded corners on selection edges trimmed by a scroll ancestor", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table, cells } = createGridTableFixture(document);
+    const scroller = document.createElement("div") as FakeHTMLElement;
+
+    table.remove();
+    roundTable(table);
+    scroller.style.overflow = "auto";
+    scroller.setBoundingClientRect({ left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30 });
+    scroller.scrollHeight = 40;
+    scroller.appendChild(table);
+    document.body.appendChild(scroller);
+
+    enhanceTable(table, { interactionMode: "desktop", observeMutations: false });
+    clickCell(table, cells.topLeft);
+    clickCell(table, cells.bottomRight, { shiftKey: true });
+
+    // The bottom 10px is clipped away, so the bottom corners must not stay rounded.
+    assert.equal(getSelectionFill(document)?.style.borderRadius, "8px 8px 0 0");
+  } finally {
+    restore();
+  }
+});
+
 test("enhanceTable ignores descendants marked with data-table-steroids-ignore", async () => {
   const { document, restore } = installFakeDom();
 

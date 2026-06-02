@@ -25,6 +25,15 @@ function createLayer() {
     return layer;
 }
 /**
+ * Rounds the corners of one overlay rectangle so the highlight follows a rounded table edge.
+ */
+function applyOverlayRadius(element, radius) {
+    if (!radius) {
+        return;
+    }
+    element.style.borderRadius = `${radius.tl} ${radius.tr} ${radius.br} ${radius.bl}`;
+}
+/**
  * Creates the filled rectangle used for a committed selection.
  */
 function createSelectionFill(rect, selectionStroke, selectionFill) {
@@ -32,6 +41,7 @@ function createSelectionFill(rect, selectionStroke, selectionFill) {
     setRectStyles(fill, rect);
     fill.style.background = selectionFill;
     fill.style.boxShadow = `inset 0 0 0 1px ${selectionStroke}`;
+    applyOverlayRadius(fill, rect.radius);
     return fill;
 }
 /**
@@ -60,12 +70,25 @@ function clipOverlayRect(rect, clipRect) {
     if (width <= 0 || height <= 0) {
         return null;
     }
+    const trimmedLeft = left > rect.left;
+    const trimmedTop = top > rect.top;
+    const trimmedRight = right < rect.left + rect.width;
+    const trimmedBottom = bottom < rect.top + rect.height;
+    const radius = rect.radius
+        ? {
+            tl: trimmedLeft || trimmedTop ? "0" : rect.radius.tl,
+            tr: trimmedRight || trimmedTop ? "0" : rect.radius.tr,
+            br: trimmedRight || trimmedBottom ? "0" : rect.radius.br,
+            bl: trimmedLeft || trimmedBottom ? "0" : rect.radius.bl,
+        }
+        : undefined;
     return {
         ...rect,
         left,
         top,
         width,
         height,
+        radius,
     };
 }
 /**
@@ -135,6 +158,7 @@ export class SelectionOverlay {
             const dragFill = document.createElement("div");
             setRectStyles(dragFill, clippedDragRect);
             dragFill.style.background = this.theme.selectionFill;
+            applyOverlayRadius(dragFill, clippedDragRect.radius);
             fillRects.push(dragFill);
         }
         const copiedRings = clippedCopiedRects.map((rect) => createCopiedRing(rect, this.theme.copiedOutline, this.theme.copiedOutlineWidth));

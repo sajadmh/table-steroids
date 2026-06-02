@@ -17,7 +17,13 @@ import {
   type ResolvedTableSpreadsheetInteractionMode,
   type TableSpreadsheetInteractionMode,
 } from "./interaction-mode.js";
-import { SelectionOverlay, type OverlayClipRect, type OverlayRect, type SpreadsheetOverlayTheme } from "./overlay.js";
+import {
+  SelectionOverlay,
+  type OverlayClipRect,
+  type OverlayCornerRadii,
+  type OverlayRect,
+  type SpreadsheetOverlayTheme,
+} from "./overlay.js";
 import {
   buildDOMTableModel,
   getCoordinateKey,
@@ -465,6 +471,47 @@ function cellIntersectsSelectionBounds(
 }
 
 /**
+ * Reads the rounded corners from the table (or its nearest rounded ancestor) so the
+ * selection highlight can match a rounded container edge. Returns null when nothing is rounded.
+ */
+function readSelectionCornerRadii(table: HTMLTableElement, overlayHost: HTMLElement | null): OverlayCornerRadii | null {
+  const computeStyle =
+    typeof window.getComputedStyle === "function"
+      ? window.getComputedStyle.bind(window)
+      : typeof globalThis.getComputedStyle === "function"
+        ? globalThis.getComputedStyle.bind(globalThis)
+        : null;
+
+  if (!computeStyle) {
+    return null;
+  }
+
+  let element: HTMLElement | null = table;
+
+  for (let depth = 0; element && depth < 6; depth += 1) {
+    const style = computeStyle(element);
+    const radius: OverlayCornerRadii = {
+      tl: style.borderTopLeftRadius || "0",
+      tr: style.borderTopRightRadius || "0",
+      br: style.borderBottomRightRadius || "0",
+      bl: style.borderBottomLeftRadius || "0",
+    };
+
+    if ([radius.tl, radius.tr, radius.br, radius.bl].some((value) => Number.parseFloat(value) > 0)) {
+      return radius;
+    }
+
+    if (element === overlayHost) {
+      break;
+    }
+
+    element = element.parentElement;
+  }
+
+  return null;
+}
+
+/**
  * Measures the on-screen rectangle covered by a logical selection.
  */
 function getOverlayRect(
@@ -473,7 +520,8 @@ function getOverlayRect(
   rowIndexMap: Record<string, number>,
   columnIndexMap: Record<string, number>,
   overlayHost: HTMLElement | null = null,
-) {
+  cornerRadii: OverlayCornerRadii | null = null,
+): Omit<OverlayRect, "key"> | null {
   const bounds = getSelectionBounds(selection, rowIndexMap, columnIndexMap);
 
   if (!bounds) {
@@ -503,11 +551,31 @@ function getOverlayRect(
     return null;
   }
 
+  let radius: OverlayCornerRadii | undefined;
+
+  if (cornerRadii) {
+    const atTop = bounds.minRow === 0;
+    const atBottom = bounds.maxRow === model.rows.length - 1;
+    const atLeft = bounds.minColumn === 0;
+    const atRight = bounds.maxColumn === model.columns.length - 1;
+    const resolved: OverlayCornerRadii = {
+      tl: atTop && atLeft ? cornerRadii.tl : "0",
+      tr: atTop && atRight ? cornerRadii.tr : "0",
+      br: atBottom && atRight ? cornerRadii.br : "0",
+      bl: atBottom && atLeft ? cornerRadii.bl : "0",
+    };
+
+    if (resolved.tl !== "0" || resolved.tr !== "0" || resolved.br !== "0" || resolved.bl !== "0") {
+      radius = resolved;
+    }
+  }
+
   return {
     left: selectionEdges.left,
     top: selectionEdges.top,
     width,
     height,
+    radius,
   };
 }
 
@@ -978,9 +1046,10 @@ export function enhanceTable(table: HTMLTableElement, options: TableSpreadsheetO
    * Rebuilds the overlay rectangles for committed and in-progress selections.
    */
   const renderOverlay = () => {
+    const cornerRadii = readSelectionCornerRadii(table, overlayHost);
     const selectionRects = selectionRanges
       .map((selection) => {
-        const rect = getOverlayRect(selection, model, rowIndexMap, columnIndexMap, overlayHost);
+        const rect = getOverlayRect(selection, model, rowIndexMap, columnIndexMap, overlayHost, cornerRadii);
 
         if (!rect) {
           return null;
@@ -994,7 +1063,9 @@ export function enhanceTable(table: HTMLTableElement, options: TableSpreadsheetO
       .filter((rect): rect is OverlayRect => rect !== null);
 
     const copiedRects = selectionRects.filter((rect) => copiedSelectionKeys.includes(rect.key));
-    const nextDragRect = dragState ? getOverlayRect(dragState.selection, model, rowIndexMap, columnIndexMap, overlayHost) : null;
+    const nextDragRect = dragState
+      ? getOverlayRect(dragState.selection, model, rowIndexMap, columnIndexMap, overlayHost, cornerRadii)
+      : null;
     const clipRect = getOverlayClipRect(table, overlayHost);
 
     overlay.render(selectionRects, copiedRects, nextDragRect ? { key: "drag-selection", ...nextDragRect } : null, clipRect);

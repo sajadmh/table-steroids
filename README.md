@@ -91,9 +91,13 @@ function createDeletePlugin(
 
 export function EditableTable() {
   const tableRef = React.useRef<HTMLTableElement | null>(null);
-  const deletePlugin = React.useMemo(() => createDeletePlugin((cells) => {
-    console.log("clear these cells", cells);
-  }), []);
+  const deletePlugin = React.useMemo(
+    () =>
+      createDeletePlugin((cells) => {
+        console.log("clear these cells", cells);
+      }),
+    [],
+  );
 
   useReactTableSteroids(tableRef, {
     plugins: [deletePlugin],
@@ -160,6 +164,10 @@ Once used, the popup will show `latest version` or `offline version` depending o
 - Selection scoping with `selectionScope: "all" | "tbody"` plus `isSelectableCell(cell)` filtering
 - Overlay rendering that tracks scrolling and window resizing
 - Selection persistence when the table model rebuilds, including observed DOM mutations and manual refreshes
+
+## Rounded corners
+
+The selection highlight automatically rounds to match a rounded table, but the radius must live on the `<table>` (the `<TableSteroids>` element itself), via `style={{ borderRadius: 8 }}` or a class like Tailwind's `rounded-md`. This way corner cells round correctly. If a wrapping `<div>` is what provides the table's border or rounding, give the `<table>` the appropriate rounding to apply to the cell selection.
 
 ## What this is not
 

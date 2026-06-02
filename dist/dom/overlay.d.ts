@@ -1,9 +1,16 @@
+export interface OverlayCornerRadii {
+    tl: string;
+    tr: string;
+    br: string;
+    bl: string;
+}
 export interface OverlayRect {
     key: string;
     left: number;
     top: number;
     width: number;
     height: number;
+    radius?: OverlayCornerRadii;
 }
 export interface OverlayClipRect {
     top: number;
