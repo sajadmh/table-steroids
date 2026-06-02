@@ -795,6 +795,36 @@ test("enhanceTable drops rounded corners on selection edges trimmed by a scroll 
   }
 });
 
+test("enhanceTable keeps rounded corners when the clip trims less than the corner radius", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table, cells } = createGridTableFixture(document);
+    const scroller = document.createElement("div") as FakeHTMLElement;
+
+    table.remove();
+    roundTable(table);
+    scroller.style.overflow = "hidden";
+    // 1px smaller than the table on the right and bottom — mimics an overflow:hidden
+    // wrapper's border combined with the measured rect's floor/ceil expansion.
+    scroller.setBoundingClientRect({ left: 0, top: 0, right: 99, bottom: 39, width: 99, height: 39 });
+    scroller.scrollWidth = 100;
+    scroller.scrollHeight = 40;
+    scroller.appendChild(table);
+    document.body.appendChild(scroller);
+
+    enhanceTable(table, { interactionMode: "desktop", observeMutations: false });
+    clickCell(table, cells.topLeft);
+    clickCell(table, cells.bottomRight, { shiftKey: true });
+
+    // A 1px trim is far less than the 8px radius, so every corner stays rounded.
+    assert.equal(getSelectionFill(document)?.style.borderRadius, "8px 8px 8px 8px");
+  } finally {
+    restore();
+  }
+});
+
 test("enhanceTable ignores descendants marked with data-table-steroids-ignore", async () => {
   const { document, restore } = installFakeDom();
 

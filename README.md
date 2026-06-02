@@ -167,7 +167,7 @@ Once used, the popup will show `latest version` or `offline version` depending o
 
 ## Rounded corners
 
-The selection highlight automatically rounds to match a rounded table, but the radius must live on the `<table>` (the `<TableSteroids>` element itself), via `style={{ borderRadius: 8 }}` or a class like Tailwind's `rounded-md`. This way corner cells round correctly. If a wrapping `<div>` is what provides the table's border or rounding, give the `<table>` the appropriate rounding to apply to the cell selection.
+The selection highlight automatically rounds its corners to match a rounded table. It reads the `border-radius` from the `<table>` (the `<TableSteroids>` element itself) or the nearest rounded ancestor, e.g. a wrapping `<div>` with `overflow: hidden`. Apply your rounding the usual way, via `style={{ borderRadius: 8 }}` or a class like Tailwind's `rounded-md`; no extra configuration is needed. Note that a `border-collapse: collapse` table ignores its own `border-radius`, so round a wrapping element instead.
 
 ## What this is not
 

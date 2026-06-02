@@ -113,16 +113,24 @@ function clipOverlayRect(rect: OverlayRect, clipRect: OverlayClipRect | null) {
     return null;
   }
 
-  const trimmedLeft = left > rect.left;
-  const trimmedTop = top > rect.top;
-  const trimmedRight = right < rect.left + rect.width;
-  const trimmedBottom = bottom < rect.top + rect.height;
+  // Drop a corner's rounding only when the clip eats into the rounded arc itself.
+  // A sub-pixel/border trim (e.g. an overflow:hidden wrapper's 1px border, combined with
+  // the floor/ceil expansion of the measured rect) must not square off a corner — only a
+  // real scroll-clip that cuts at least the corner radius deep should.
+  const trimLeft = left - rect.left;
+  const trimTop = top - rect.top;
+  const trimRight = rect.left + rect.width - right;
+  const trimBottom = rect.top + rect.height - bottom;
+  const keepCorner = (value: string, edgeTrimA: number, edgeTrimB: number) => {
+    const radiusPx = Number.parseFloat(value) || 0;
+    return edgeTrimA < radiusPx && edgeTrimB < radiusPx ? value : "0";
+  };
   const radius = rect.radius
     ? {
-        tl: trimmedLeft || trimmedTop ? "0" : rect.radius.tl,
-        tr: trimmedRight || trimmedTop ? "0" : rect.radius.tr,
-        br: trimmedRight || trimmedBottom ? "0" : rect.radius.br,
-        bl: trimmedLeft || trimmedBottom ? "0" : rect.radius.bl,
+        tl: keepCorner(rect.radius.tl, trimLeft, trimTop),
+        tr: keepCorner(rect.radius.tr, trimRight, trimTop),
+        br: keepCorner(rect.radius.br, trimRight, trimBottom),
+        bl: keepCorner(rect.radius.bl, trimLeft, trimBottom),
       }
     : undefined;
 
