@@ -114,6 +114,7 @@ export interface TableSpreadsheetPluginContext {
   getSnapshot(): TableSelectionSnapshot;
   refresh(): void;
   clearSelection(): void;
+  setSelections(selections: Selection[], activeSelection?: Selection | null): void;
   copySelection(): Promise<boolean>;
 }
 
@@ -128,6 +129,7 @@ export interface TableSpreadsheetHandle {
   destroy(): void;
   refresh(): void;
   clearSelection(): void;
+  setSelections(selections: Selection[], activeSelection?: Selection | null): void;
   getSelections(): Selection[];
   getActiveSelection(): Selection | null;
   getSelectionSnapshot(): TableSelectionSnapshot;
@@ -893,6 +895,7 @@ export function enhanceTable(table: HTMLTableElement, options: TableSpreadsheetO
     getSnapshot: () => getSelectionSnapshot(),
     refresh: () => handle.refresh(),
     clearSelection: () => handle.clearSelection(),
+    setSelections: (selections, nextActiveSelection) => handle.setSelections(selections, nextActiveSelection),
     copySelection: () => handle.copySelection(),
   } satisfies TableSpreadsheetPluginContext;
 
@@ -1598,6 +1601,14 @@ export function enhanceTable(table: HTMLTableElement, options: TableSpreadsheetO
     clearSelection() {
       copiedSelectionKeys = [];
       syncSelections([], null);
+    },
+    /**
+     * Replaces the current selections with a caller-provided selection set.
+     */
+    setSelections(selections, nextActiveSelection) {
+      clearPendingPress();
+      stopDragSelection(false);
+      syncSelections(selections, nextActiveSelection === undefined ? getLastSelection(selections) : nextActiveSelection);
     },
     /**
      * Returns a cloned snapshot of the current selections.

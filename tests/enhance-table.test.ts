@@ -1008,6 +1008,66 @@ test("enhanceTable returns multi-range selection snapshots", async () => {
   }
 });
 
+test("enhanceTable can programmatically replace the current selections", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table, cells } = createGridTableFixture(document);
+    type TestSelection = {
+      start: { rowId: string; columnId: string };
+      end: { rowId: string; columnId: string };
+    };
+    const selectionChanges: Array<{ selections: unknown[]; activeSelection: unknown }> = [];
+    let setSelectionsFromPlugin: ((selections: TestSelection[], activeSelection?: TestSelection | null) => void) | null = null;
+    const handle = enhanceTable(table, {
+      interactionMode: "desktop",
+      observeMutations: false,
+      onSelectionChange(selections, activeSelection) {
+        selectionChanges.push({ selections, activeSelection });
+      },
+      plugins: [
+        {
+          name: "programmatic-selection",
+          onSetup(context) {
+            setSelectionsFromPlugin = context.setSelections;
+          },
+        },
+      ],
+    });
+    const columnSelection = {
+      start: { rowId: "row-0", columnId: "column-1" },
+      end: { rowId: "row-1", columnId: "column-1" },
+    };
+
+    assert(setSelectionsFromPlugin);
+    setSelectionsFromPlugin([columnSelection]);
+
+    const snapshot = handle.getSelectionSnapshot();
+
+    assert.deepEqual(snapshot.selections, [columnSelection]);
+    assert.deepEqual(snapshot.activeSelection, columnSelection);
+    assert.deepEqual(snapshot.bounds, [{ minRow: 0, maxRow: 1, minColumn: 1, maxColumn: 1 }]);
+    assert.deepEqual(
+      snapshot.selectedCells.map((cell) => `${cell.rowId}:${cell.columnId}`),
+      ["row-0:column-1", "row-1:column-1"],
+    );
+    assert.equal(selectionChanges.length, 2);
+    assert.deepEqual(selectionChanges.at(-1), {
+      selections: [columnSelection],
+      activeSelection: columnSelection,
+    });
+
+    handle.setSelections([columnSelection], null);
+
+    assert.deepEqual(handle.getSelections(), [columnSelection]);
+    assert.equal(handle.getActiveSelection(), null);
+    assert.equal(cells.topRight.getAttribute("data-table-steroids-cell"), "true");
+  } finally {
+    restore();
+  }
+});
+
 test("enhanceTable selection snapshots preserve rowSpan and colSpan aliases", async () => {
   const { document, restore } = installFakeDom();
 

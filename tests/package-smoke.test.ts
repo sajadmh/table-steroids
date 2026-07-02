@@ -88,6 +88,7 @@ test("the published type surfaces expose the plugin API across root and react en
   assert.match(indexTypes, /type TableSelectionSnapshot/);
   assert.match(indexTypes, /type TableSpreadsheetPlugin/);
   assert.match(indexTypes, /type TableSpreadsheetPluginContext/);
+  assert.match(domEnhancerTypes, /setSelections\(selections: Selection\[\], activeSelection\?: Selection \| null\): void;/);
   assert.match(domEnhancerTypes, /getSelectionSnapshot\(\): TableSelectionSnapshot;/);
   assert.match(reactTypes, /TableSpreadsheetPlugin/);
   assert.match(reactTypes, /TableSelectionSnapshot/);

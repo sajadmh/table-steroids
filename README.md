@@ -53,6 +53,19 @@ enhanceTable(document.querySelector("table")!);
 enhanceTables(document);
 ```
 
+The enhancer returns a handle for imperative workflows, including app-owned selection controls:
+
+```ts
+const handle = enhanceTable(document.querySelector("table")!);
+
+handle.setSelections([
+  {
+    start: { rowId: "row-0", columnId: "column-3" },
+    end: { rowId: "row-42", columnId: "column-3" },
+  },
+]);
+```
+
 ## Extending behaviors with plugins
 
 The library owns spreadsheet primitives like selection, keyboard navigation, copy, overlay rendering, and model refresh. App-specific behaviors should be layered on through plugins.
@@ -107,7 +120,7 @@ export function EditableTable() {
 }
 ```
 
-Each plugin receives a current selection snapshot plus a small context with `table`, `handle`, `getSnapshot()`, `refresh()`, `clearSelection()`, and `copySelection()`.
+Each plugin receives a current selection snapshot plus a small context with `table`, `handle`, `getSnapshot()`, `refresh()`, `clearSelection()`, `setSelections()`, and `copySelection()`.
 
 The npm package is designed for desktop and mobile web. By default it auto-selects a desktop or touch interaction model at runtime.
 
@@ -159,6 +172,7 @@ Once used, the popup will show `latest version` or `offline version` depending o
 - Desktop drag selection that waits for a small movement threshold before capturing the pointer
 - Cmd/Ctrl additive and subtractive multi-range selection
 - Arrow-key navigation plus Shift+arrow range expansion
+- Programmatic selection replacement with `handle.setSelections()`
 - Honest clipboard behavior for single, horizontal, vertical, and irregular multi-range copies, including HTML table payloads when the browser allows it
 - `rowSpan` and `colSpan` aware modeling for native table cells
 - Selection scoping with `selectionScope: "all" | "tbody"` plus `isSelectableCell(cell)` filtering

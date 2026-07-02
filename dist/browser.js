@@ -1490,6 +1490,7 @@ function enhanceTable(table, options = {}) {
         getSnapshot: () => getSelectionSnapshot(),
         refresh: () => handle.refresh(),
         clearSelection: () => handle.clearSelection(),
+        setSelections: (selections, nextActiveSelection) => handle.setSelections(selections, nextActiveSelection),
         copySelection: () => handle.copySelection(),
     };
     /**
@@ -2043,6 +2044,14 @@ function enhanceTable(table, options = {}) {
         clearSelection() {
             copiedSelectionKeys = [];
             syncSelections([], null);
+        },
+        /**
+         * Replaces the current selections with a caller-provided selection set.
+         */
+        setSelections(selections, nextActiveSelection) {
+            clearPendingPress();
+            stopDragSelection(false);
+            syncSelections(selections, nextActiveSelection === undefined ? getLastSelection(selections) : nextActiveSelection);
         },
         /**
          * Returns a cloned snapshot of the current selections.

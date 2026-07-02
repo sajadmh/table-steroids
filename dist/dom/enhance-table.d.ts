@@ -36,6 +36,7 @@ export interface TableSpreadsheetPluginContext {
     getSnapshot(): TableSelectionSnapshot;
     refresh(): void;
     clearSelection(): void;
+    setSelections(selections: Selection[], activeSelection?: Selection | null): void;
     copySelection(): Promise<boolean>;
 }
 export interface TableSpreadsheetPlugin {
@@ -48,6 +49,7 @@ export interface TableSpreadsheetHandle {
     destroy(): void;
     refresh(): void;
     clearSelection(): void;
+    setSelections(selections: Selection[], activeSelection?: Selection | null): void;
     getSelections(): Selection[];
     getActiveSelection(): Selection | null;
     getSelectionSnapshot(): TableSelectionSnapshot;
