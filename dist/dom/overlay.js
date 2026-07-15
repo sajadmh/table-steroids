@@ -4,6 +4,7 @@ export const DEFAULT_OVERLAY_THEME = {
     copiedOutline: "rgb(27 114 232)",
     copiedOutlineWidth: 1.5,
     zIndex: 40,
+    frozenZIndex: 40,
 };
 /**
  * Applies absolute positioning styles for one overlay rectangle.
@@ -34,24 +35,66 @@ function applyOverlayRadius(element, radius) {
     element.style.borderRadius = `${radius.tl} ${radius.tr} ${radius.br} ${radius.bl}`;
 }
 /**
+ * Builds the inset box-shadow border for a selection fill.
+ *
+ * A missing stroke draws the full four-sided border in a single shadow — matching
+ * the historical single-layer output byte for byte. A supplied {@link EdgeStroke}
+ * emits one inset shadow per enabled edge so an interior seam edge can be dropped.
+ */
+function strokeShadow(stroke, color) {
+    if (!stroke) {
+        return `inset 0 0 0 1px ${color}`;
+    }
+    const shadows = [];
+    if (stroke.top) {
+        shadows.push(`inset 0 1px 0 0 ${color}`);
+    }
+    if (stroke.right) {
+        shadows.push(`inset -1px 0 0 0 ${color}`);
+    }
+    if (stroke.bottom) {
+        shadows.push(`inset 0 -1px 0 0 ${color}`);
+    }
+    if (stroke.left) {
+        shadows.push(`inset 1px 0 0 0 ${color}`);
+    }
+    return shadows.length > 0 ? shadows.join(", ") : "none";
+}
+/**
  * Creates the filled rectangle used for a committed selection.
  */
 function createSelectionFill(rect, selectionStroke, selectionFill) {
     const fill = document.createElement("div");
     setRectStyles(fill, rect);
     fill.style.background = selectionFill;
-    fill.style.boxShadow = `inset 0 0 0 1px ${selectionStroke}`;
+    fill.style.boxShadow = strokeShadow(rect.stroke, selectionStroke);
     applyOverlayRadius(fill, rect.radius);
     return fill;
 }
 /**
  * Creates the dashed outline used for copied selections.
+ *
+ * With no stroke override the ring is a single `outline` on all four sides —
+ * matching the historical single-layer output. When a copied selection spans the
+ * freeze boundary its pieces carry a stroke with the interior seam edge disabled,
+ * so the ring falls back to per-side dashed borders to avoid drawing a dashed
+ * line down the seam.
  */
 function createCopiedRing(rect, copiedOutline, copiedOutlineWidth) {
     const ring = document.createElement("div");
     setRectStyles(ring, rect);
-    ring.style.outline = `${copiedOutlineWidth}px dashed ${copiedOutline}`;
-    ring.style.outlineOffset = "0";
+    if (rect.stroke) {
+        const edge = (enabled) => (enabled ? `${copiedOutlineWidth}px dashed ${copiedOutline}` : "0");
+        ring.style.boxSizing = "border-box";
+        ring.style.borderTop = edge(rect.stroke.top);
+        ring.style.borderRight = edge(rect.stroke.right);
+        ring.style.borderBottom = edge(rect.stroke.bottom);
+        ring.style.borderLeft = edge(rect.stroke.left);
+    }
+    else {
+        ring.style.outline = `${copiedOutlineWidth}px dashed ${copiedOutline}`;
+        ring.style.outlineOffset = "0";
+    }
     return ring;
 }
 /**
@@ -113,54 +156,86 @@ function setRootClipStyles(root, clipRect) {
 }
 export class SelectionOverlay {
     /**
-     * Creates the overlay root and its rendering layers.
+     * Creates the two stacked overlay roots (scrolling + pinned) and their layers.
      */
     constructor(theme = {}, host = document.body) {
         this.previousHostPosition = null;
         this.theme = { ...DEFAULT_OVERLAY_THEME, ...theme };
         this.host = host;
         this.mode = host === document.body ? "viewport" : "local";
-        this.root = document.createElement("div");
-        this.fillLayer = createLayer();
-        this.ringLayer = createLayer();
-        this.root.setAttribute("aria-hidden", "true");
-        this.root.style.pointerEvents = "none";
-        this.root.style.zIndex = String(this.theme.zIndex);
         if (this.mode === "local") {
             const hostPosition = typeof window.getComputedStyle === "function" ? window.getComputedStyle(this.host).position : this.host.style.position;
             if (!hostPosition || hostPosition === "static") {
                 this.previousHostPosition = this.host.style.position;
                 this.host.style.position = "relative";
             }
-            this.root.style.position = "absolute";
-            this.root.style.left = "0";
-            this.root.style.top = "0";
-            this.root.style.width = `${this.host.scrollWidth}px`;
-            this.root.style.height = `${this.host.scrollHeight}px`;
         }
-        else {
-            this.root.style.position = "fixed";
-            this.root.style.inset = "0";
-        }
-        this.root.append(this.fillLayer, this.ringLayer);
-        this.host.appendChild(this.root);
+        const frozenZIndex = this.theme.frozenZIndex ?? this.theme.zIndex;
+        // Append the scrolling layer first so it sits under the pinned layer, and so
+        // DOM-order lookups (tests, tooling) resolve the primary root first.
+        this.base = this.createRoot("base", this.theme.zIndex);
+        this.frozen = this.createRoot("frozen", frozenZIndex);
     }
     /**
-     * Renders committed selections, copied outlines, and an optional drag preview.
+     * Builds one overlay root with its fill and ring layers and mounts it on the host.
      */
-    render(selectionRects, copiedRects, dragRect, clipRect = null) {
+    createRoot(kind, zIndex) {
+        const root = document.createElement("div");
+        const stickyBand = kind === "frozen" ? document.createElement("div") : null;
+        const surface = stickyBand ?? root;
+        const fillLayer = createLayer();
+        const ringLayer = createLayer();
+        root.setAttribute("aria-hidden", "true");
+        root.setAttribute("data-table-steroids-overlay", kind);
+        root.style.pointerEvents = "none";
+        root.style.zIndex = String(zIndex);
         if (this.mode === "local") {
-            this.root.style.width = `${this.host.scrollWidth}px`;
-            this.root.style.height = `${this.host.scrollHeight}px`;
+            root.style.position = "absolute";
+            root.style.left = "0";
+            root.style.top = "0";
+            root.style.width = `${this.host.scrollWidth}px`;
+            root.style.height = `${this.host.scrollHeight}px`;
         }
-        setRootClipStyles(this.root, clipRect);
-        const clippedSelectionRects = selectionRects
-            .map((rect) => clipOverlayRect(rect, clipRect))
+        else {
+            root.style.position = "fixed";
+            root.style.inset = "0";
+        }
+        if (stickyBand) {
+            stickyBand.style.position = "sticky";
+            stickyBand.style.height = "100%";
+            stickyBand.style.overflow = "hidden";
+            stickyBand.append(fillLayer, ringLayer);
+            root.appendChild(stickyBand);
+        }
+        else {
+            root.append(fillLayer, ringLayer);
+        }
+        this.host.appendChild(root);
+        return { root, surface, fillLayer, ringLayer, stickyBand };
+    }
+    /**
+     * Renders the scrolling and pinned overlay layers from their split payloads.
+     */
+    render(input) {
+        this.paintLayer(this.base, input.base);
+        this.paintFrozenLayer(input.frozen);
+    }
+    /**
+     * Runs the clip + paint pipeline for one overlay layer.
+     */
+    paintLayer(layer, input) {
+        if (this.mode === "local") {
+            layer.root.style.width = `${this.host.scrollWidth}px`;
+            layer.root.style.height = `${this.host.scrollHeight}px`;
+        }
+        setRootClipStyles(layer.root, input.clip);
+        const clippedSelectionRects = input.selectionRects
+            .map((rect) => clipOverlayRect(rect, input.clip))
             .filter((rect) => rect !== null);
-        const clippedCopiedRects = copiedRects
-            .map((rect) => clipOverlayRect(rect, clipRect))
+        const clippedCopiedRects = input.copiedRects
+            .map((rect) => clipOverlayRect(rect, input.clip))
             .filter((rect) => rect !== null);
-        const clippedDragRect = dragRect ? clipOverlayRect(dragRect, clipRect) : null;
+        const clippedDragRect = input.dragRect ? clipOverlayRect(input.dragRect, input.clip) : null;
         const fillRects = clippedSelectionRects.map((rect) => createSelectionFill(rect, this.theme.selectionStroke, this.theme.selectionFill));
         if (clippedDragRect) {
             const dragFill = document.createElement("div");
@@ -170,15 +245,58 @@ export class SelectionOverlay {
             fillRects.push(dragFill);
         }
         const copiedRings = clippedCopiedRects.map((rect) => createCopiedRing(rect, this.theme.copiedOutline, this.theme.copiedOutlineWidth));
-        this.root.style.display = fillRects.length > 0 || copiedRings.length > 0 ? "block" : "none";
-        this.fillLayer.replaceChildren(...fillRects);
-        this.ringLayer.replaceChildren(...copiedRings);
+        layer.root.style.display = fillRects.length > 0 || copiedRings.length > 0 ? "block" : "none";
+        layer.fillLayer.replaceChildren(...fillRects);
+        layer.ringLayer.replaceChildren(...copiedRings);
     }
     /**
-     * Removes the overlay from the document.
+     * Paints frozen rectangles inside one horizontally-sticky band. The root stays
+     * in vertical content coordinates; only the inner surface participates in
+     * horizontal sticky positioning.
+     */
+    paintFrozenLayer(input) {
+        const layer = this.frozen;
+        if (this.mode === "local") {
+            layer.root.style.width = `${this.host.scrollWidth}px`;
+            layer.root.style.height = `${this.host.scrollHeight}px`;
+        }
+        // Native overflow on the sticky band and its real ancestors owns frozen
+        // clipping. In particular, never chase scrollLeft with a root clip-path.
+        layer.root.style.clipPath = "";
+        if (!input.band || !layer.stickyBand) {
+            layer.root.style.display = "none";
+            layer.fillLayer.replaceChildren();
+            layer.ringLayer.replaceChildren();
+            return;
+        }
+        layer.stickyBand.style.left = `${input.band.left}px`;
+        layer.stickyBand.style.width = `${input.band.width}px`;
+        const clippedSelectionRects = input.selectionRects
+            .map((rect) => clipOverlayRect(rect, input.clip))
+            .filter((rect) => rect !== null);
+        const clippedCopiedRects = input.copiedRects
+            .map((rect) => clipOverlayRect(rect, input.clip))
+            .filter((rect) => rect !== null);
+        const clippedDragRect = input.dragRect ? clipOverlayRect(input.dragRect, input.clip) : null;
+        const fillRects = clippedSelectionRects.map((rect) => createSelectionFill(rect, this.theme.selectionStroke, this.theme.selectionFill));
+        if (clippedDragRect) {
+            const dragFill = document.createElement("div");
+            setRectStyles(dragFill, clippedDragRect);
+            dragFill.style.background = this.theme.selectionFill;
+            applyOverlayRadius(dragFill, clippedDragRect.radius);
+            fillRects.push(dragFill);
+        }
+        const copiedRings = clippedCopiedRects.map((rect) => createCopiedRing(rect, this.theme.copiedOutline, this.theme.copiedOutlineWidth));
+        layer.root.style.display = fillRects.length > 0 || copiedRings.length > 0 ? "block" : "none";
+        layer.fillLayer.replaceChildren(...fillRects);
+        layer.ringLayer.replaceChildren(...copiedRings);
+    }
+    /**
+     * Removes both overlay roots from the document and restores the host position.
      */
     destroy() {
-        this.root.remove();
+        this.base.root.remove();
+        this.frozen.root.remove();
         if (this.previousHostPosition !== null) {
             this.host.style.position = this.previousHostPosition;
             this.previousHostPosition = null;

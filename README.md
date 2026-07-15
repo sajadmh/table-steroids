@@ -177,11 +177,42 @@ Once used, the popup will show `latest version` or `offline version` depending o
 - `rowSpan` and `colSpan` aware modeling for native table cells
 - Selection scoping with `selectionScope: "all" | "tbody"` plus `isSelectableCell(cell)` filtering
 - Overlay rendering that tracks scrolling and window resizing
+- Frozen (left-pinned) column awareness: selections split at the freeze boundary and paint on a stacked pinned layer
 - Selection persistence when the table model rebuilds, including observed DOM mutations and manual refreshes
 
 ## Rounded corners
 
 The selection highlight automatically rounds its corners to match a rounded table. It reads the `border-radius` from the `<table>` (the `<TableSteroids>` element itself) or the nearest rounded ancestor, e.g. a wrapping `<div>` with `overflow: hidden`. Apply your rounding the usual way, via `style={{ borderRadius: 8 }}` or a class like Tailwind's `rounded-md`; no extra configuration is needed. Note that a `border-collapse: collapse` table ignores its own `border-radius`, so round a wrapping element instead.
+
+## Frozen columns
+
+The selection overlay is aware of frozen (left-pinned) columns. It detects them straight from the DOM — a column counts as frozen when a representative cell computes `position: sticky` with a pinned `left` (not `auto`) — so both React and vanilla consumers get it for free with no extra configuration.
+
+When a selection crosses the freeze boundary it is split into two pieces:
+
+- a **pinned piece** rendered on a dedicated overlay layer that stays put as you scroll horizontally, and
+- a **scrolling piece** rendered on the base layer and clipped behind the frozen band.
+
+The interior seam edge between the two pieces is suppressed, so a cross-boundary selection reads as one continuous highlight with no double line at the seam, and the true outer corners still honor a rounded container.
+
+The pinned piece is glued to the frozen cells by the same mechanism the base selection uses to track its scrolling cells: it is measured in the scroll container's content coordinates and recomputed as you scroll, so it stays locked to the sticky columns.
+
+### Layering contract
+
+The overlay paints on two stacked roots whose stacking order is controlled by the theme:
+
+- `zIndex` — the base (scrolling) selection layer.
+- `frozenZIndex` — the pinned selection layer. Defaults to `zIndex`, so a table with **no** frozen columns is byte-for-byte identical to the previous single-layer overlay.
+
+For frozen columns to look right, your **frozen body cells must sit between the two layers**: give them a z-index above `zIndex` (so the scrolling selection can't paint over the pins) and below `frozenZIndex` (so the pinned selection paints over the frozen cells). For example, with frozen body cells at z-index 14 and headers at 25:
+
+```ts
+enhanceTable(table, {
+  overlay: { zIndex: 13, frozenZIndex: 20 },
+});
+```
+
+Right-pinned columns are out of scope: they compute `left: auto`, so they are treated as scrolling and the overlay degrades to its single-layer behavior.
 
 ## What this is not
 

@@ -14,6 +14,11 @@ export interface DOMTableModel {
     cells: DOMTableCell[];
     cellByCoordinate: Map<string, DOMTableCell>;
     copyValueByCoordinate: Map<string, string>;
+    /**
+     * Ids of the columns detected as frozen (left-pinned sticky) from the DOM.
+     * Empty when nothing is frozen, keeping the selection overlay single-layer.
+     */
+    frozenColumnIds: Set<string>;
 }
 export type DOMTableSelectionScope = "all" | "tbody";
 export interface BuildDOMTableModelOptions {

@@ -88,6 +88,50 @@ export function getCoordinateKey(rowId, columnId) {
     return `${rowId}:${columnId}`;
 }
 /**
+ * Resolves a computed-style reader, guarding SSR / no-window environments.
+ */
+function getComputeStyle() {
+    if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+        return window.getComputedStyle.bind(window);
+    }
+    if (typeof globalThis.getComputedStyle === "function") {
+        return globalThis.getComputedStyle.bind(globalThis);
+    }
+    return null;
+}
+/**
+ * Detects whether a rendered cell is a left-pinned (frozen) sticky cell.
+ *
+ * Scope is intentionally left-pin only: a right-pinned column computes
+ * `left: auto`, so it is treated as scrolling and the overlay degrades to its
+ * single-layer behavior.
+ */
+function isLeftPinnedCell(element, computeStyle) {
+    const style = computeStyle(element);
+    if (!style) {
+        return false;
+    }
+    const position = style.position;
+    const left = style.left;
+    return position === "sticky" && !!left && left !== "auto";
+}
+/**
+ * Derives the set of frozen (left-pinned) column ids from the rendered cells.
+ */
+function detectFrozenColumnIds(cells) {
+    const frozenColumnIds = new Set();
+    const computeStyle = getComputeStyle();
+    if (!computeStyle) {
+        return frozenColumnIds;
+    }
+    cells.forEach((cell) => {
+        if (isLeftPinnedCell(cell.element, computeStyle)) {
+            cell.aliases.forEach((alias) => frozenColumnIds.add(alias.columnId));
+        }
+    });
+    return frozenColumnIds;
+}
+/**
  * Builds a logical table model from the current DOM table structure.
  */
 export function buildDOMTableModel(table, options = {}) {
@@ -128,13 +172,18 @@ export function buildDOMTableModel(table, options = {}) {
             searchColumnIndex = columnIndex + colSpan;
         });
     });
-    const columns = Array.from({ length: maxColumnCount }, (_, index) => ({ id: getColumnId(index) }));
+    const frozenColumnIds = detectFrozenColumnIds(cells);
+    const columns = Array.from({ length: maxColumnCount }, (_, index) => {
+        const id = getColumnId(index);
+        return frozenColumnIds.has(id) ? { id, frozen: true } : { id };
+    });
     return {
         rows,
         columns,
         cells,
         cellByCoordinate,
         copyValueByCoordinate,
+        frozenColumnIds,
     };
 }
 //# sourceMappingURL=table-model.js.map

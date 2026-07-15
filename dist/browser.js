@@ -567,6 +567,7 @@ Object.assign(exports,{resolveInteractionMode});},"dom/overlay.js":function(expo
     copiedOutline: "rgb(27 114 232)",
     copiedOutlineWidth: 1.5,
     zIndex: 40,
+    frozenZIndex: 40,
 };
 /**
  * Applies absolute positioning styles for one overlay rectangle.
@@ -597,24 +598,66 @@ function applyOverlayRadius(element, radius) {
     element.style.borderRadius = `${radius.tl} ${radius.tr} ${radius.br} ${radius.bl}`;
 }
 /**
+ * Builds the inset box-shadow border for a selection fill.
+ *
+ * A missing stroke draws the full four-sided border in a single shadow — matching
+ * the historical single-layer output byte for byte. A supplied {@link EdgeStroke}
+ * emits one inset shadow per enabled edge so an interior seam edge can be dropped.
+ */
+function strokeShadow(stroke, color) {
+    if (!stroke) {
+        return `inset 0 0 0 1px ${color}`;
+    }
+    const shadows = [];
+    if (stroke.top) {
+        shadows.push(`inset 0 1px 0 0 ${color}`);
+    }
+    if (stroke.right) {
+        shadows.push(`inset -1px 0 0 0 ${color}`);
+    }
+    if (stroke.bottom) {
+        shadows.push(`inset 0 -1px 0 0 ${color}`);
+    }
+    if (stroke.left) {
+        shadows.push(`inset 1px 0 0 0 ${color}`);
+    }
+    return shadows.length > 0 ? shadows.join(", ") : "none";
+}
+/**
  * Creates the filled rectangle used for a committed selection.
  */
 function createSelectionFill(rect, selectionStroke, selectionFill) {
     const fill = document.createElement("div");
     setRectStyles(fill, rect);
     fill.style.background = selectionFill;
-    fill.style.boxShadow = `inset 0 0 0 1px ${selectionStroke}`;
+    fill.style.boxShadow = strokeShadow(rect.stroke, selectionStroke);
     applyOverlayRadius(fill, rect.radius);
     return fill;
 }
 /**
  * Creates the dashed outline used for copied selections.
+ *
+ * With no stroke override the ring is a single `outline` on all four sides —
+ * matching the historical single-layer output. When a copied selection spans the
+ * freeze boundary its pieces carry a stroke with the interior seam edge disabled,
+ * so the ring falls back to per-side dashed borders to avoid drawing a dashed
+ * line down the seam.
  */
 function createCopiedRing(rect, copiedOutline, copiedOutlineWidth) {
     const ring = document.createElement("div");
     setRectStyles(ring, rect);
-    ring.style.outline = `${copiedOutlineWidth}px dashed ${copiedOutline}`;
-    ring.style.outlineOffset = "0";
+    if (rect.stroke) {
+        const edge = (enabled) => (enabled ? `${copiedOutlineWidth}px dashed ${copiedOutline}` : "0");
+        ring.style.boxSizing = "border-box";
+        ring.style.borderTop = edge(rect.stroke.top);
+        ring.style.borderRight = edge(rect.stroke.right);
+        ring.style.borderBottom = edge(rect.stroke.bottom);
+        ring.style.borderLeft = edge(rect.stroke.left);
+    }
+    else {
+        ring.style.outline = `${copiedOutlineWidth}px dashed ${copiedOutline}`;
+        ring.style.outlineOffset = "0";
+    }
     return ring;
 }
 /**
@@ -676,54 +719,86 @@ function setRootClipStyles(root, clipRect) {
 }
 class SelectionOverlay {
     /**
-     * Creates the overlay root and its rendering layers.
+     * Creates the two stacked overlay roots (scrolling + pinned) and their layers.
      */
     constructor(theme = {}, host = document.body) {
         this.previousHostPosition = null;
         this.theme = { ...DEFAULT_OVERLAY_THEME, ...theme };
         this.host = host;
         this.mode = host === document.body ? "viewport" : "local";
-        this.root = document.createElement("div");
-        this.fillLayer = createLayer();
-        this.ringLayer = createLayer();
-        this.root.setAttribute("aria-hidden", "true");
-        this.root.style.pointerEvents = "none";
-        this.root.style.zIndex = String(this.theme.zIndex);
         if (this.mode === "local") {
             const hostPosition = typeof window.getComputedStyle === "function" ? window.getComputedStyle(this.host).position : this.host.style.position;
             if (!hostPosition || hostPosition === "static") {
                 this.previousHostPosition = this.host.style.position;
                 this.host.style.position = "relative";
             }
-            this.root.style.position = "absolute";
-            this.root.style.left = "0";
-            this.root.style.top = "0";
-            this.root.style.width = `${this.host.scrollWidth}px`;
-            this.root.style.height = `${this.host.scrollHeight}px`;
         }
-        else {
-            this.root.style.position = "fixed";
-            this.root.style.inset = "0";
-        }
-        this.root.append(this.fillLayer, this.ringLayer);
-        this.host.appendChild(this.root);
+        const frozenZIndex = this.theme.frozenZIndex ?? this.theme.zIndex;
+        // Append the scrolling layer first so it sits under the pinned layer, and so
+        // DOM-order lookups (tests, tooling) resolve the primary root first.
+        this.base = this.createRoot("base", this.theme.zIndex);
+        this.frozen = this.createRoot("frozen", frozenZIndex);
     }
     /**
-     * Renders committed selections, copied outlines, and an optional drag preview.
+     * Builds one overlay root with its fill and ring layers and mounts it on the host.
      */
-    render(selectionRects, copiedRects, dragRect, clipRect = null) {
+    createRoot(kind, zIndex) {
+        const root = document.createElement("div");
+        const stickyBand = kind === "frozen" ? document.createElement("div") : null;
+        const surface = stickyBand ?? root;
+        const fillLayer = createLayer();
+        const ringLayer = createLayer();
+        root.setAttribute("aria-hidden", "true");
+        root.setAttribute("data-table-steroids-overlay", kind);
+        root.style.pointerEvents = "none";
+        root.style.zIndex = String(zIndex);
         if (this.mode === "local") {
-            this.root.style.width = `${this.host.scrollWidth}px`;
-            this.root.style.height = `${this.host.scrollHeight}px`;
+            root.style.position = "absolute";
+            root.style.left = "0";
+            root.style.top = "0";
+            root.style.width = `${this.host.scrollWidth}px`;
+            root.style.height = `${this.host.scrollHeight}px`;
         }
-        setRootClipStyles(this.root, clipRect);
-        const clippedSelectionRects = selectionRects
-            .map((rect) => clipOverlayRect(rect, clipRect))
+        else {
+            root.style.position = "fixed";
+            root.style.inset = "0";
+        }
+        if (stickyBand) {
+            stickyBand.style.position = "sticky";
+            stickyBand.style.height = "100%";
+            stickyBand.style.overflow = "hidden";
+            stickyBand.append(fillLayer, ringLayer);
+            root.appendChild(stickyBand);
+        }
+        else {
+            root.append(fillLayer, ringLayer);
+        }
+        this.host.appendChild(root);
+        return { root, surface, fillLayer, ringLayer, stickyBand };
+    }
+    /**
+     * Renders the scrolling and pinned overlay layers from their split payloads.
+     */
+    render(input) {
+        this.paintLayer(this.base, input.base);
+        this.paintFrozenLayer(input.frozen);
+    }
+    /**
+     * Runs the clip + paint pipeline for one overlay layer.
+     */
+    paintLayer(layer, input) {
+        if (this.mode === "local") {
+            layer.root.style.width = `${this.host.scrollWidth}px`;
+            layer.root.style.height = `${this.host.scrollHeight}px`;
+        }
+        setRootClipStyles(layer.root, input.clip);
+        const clippedSelectionRects = input.selectionRects
+            .map((rect) => clipOverlayRect(rect, input.clip))
             .filter((rect) => rect !== null);
-        const clippedCopiedRects = copiedRects
-            .map((rect) => clipOverlayRect(rect, clipRect))
+        const clippedCopiedRects = input.copiedRects
+            .map((rect) => clipOverlayRect(rect, input.clip))
             .filter((rect) => rect !== null);
-        const clippedDragRect = dragRect ? clipOverlayRect(dragRect, clipRect) : null;
+        const clippedDragRect = input.dragRect ? clipOverlayRect(input.dragRect, input.clip) : null;
         const fillRects = clippedSelectionRects.map((rect) => createSelectionFill(rect, this.theme.selectionStroke, this.theme.selectionFill));
         if (clippedDragRect) {
             const dragFill = document.createElement("div");
@@ -733,15 +808,58 @@ class SelectionOverlay {
             fillRects.push(dragFill);
         }
         const copiedRings = clippedCopiedRects.map((rect) => createCopiedRing(rect, this.theme.copiedOutline, this.theme.copiedOutlineWidth));
-        this.root.style.display = fillRects.length > 0 || copiedRings.length > 0 ? "block" : "none";
-        this.fillLayer.replaceChildren(...fillRects);
-        this.ringLayer.replaceChildren(...copiedRings);
+        layer.root.style.display = fillRects.length > 0 || copiedRings.length > 0 ? "block" : "none";
+        layer.fillLayer.replaceChildren(...fillRects);
+        layer.ringLayer.replaceChildren(...copiedRings);
     }
     /**
-     * Removes the overlay from the document.
+     * Paints frozen rectangles inside one horizontally-sticky band. The root stays
+     * in vertical content coordinates; only the inner surface participates in
+     * horizontal sticky positioning.
+     */
+    paintFrozenLayer(input) {
+        const layer = this.frozen;
+        if (this.mode === "local") {
+            layer.root.style.width = `${this.host.scrollWidth}px`;
+            layer.root.style.height = `${this.host.scrollHeight}px`;
+        }
+        // Native overflow on the sticky band and its real ancestors owns frozen
+        // clipping. In particular, never chase scrollLeft with a root clip-path.
+        layer.root.style.clipPath = "";
+        if (!input.band || !layer.stickyBand) {
+            layer.root.style.display = "none";
+            layer.fillLayer.replaceChildren();
+            layer.ringLayer.replaceChildren();
+            return;
+        }
+        layer.stickyBand.style.left = `${input.band.left}px`;
+        layer.stickyBand.style.width = `${input.band.width}px`;
+        const clippedSelectionRects = input.selectionRects
+            .map((rect) => clipOverlayRect(rect, input.clip))
+            .filter((rect) => rect !== null);
+        const clippedCopiedRects = input.copiedRects
+            .map((rect) => clipOverlayRect(rect, input.clip))
+            .filter((rect) => rect !== null);
+        const clippedDragRect = input.dragRect ? clipOverlayRect(input.dragRect, input.clip) : null;
+        const fillRects = clippedSelectionRects.map((rect) => createSelectionFill(rect, this.theme.selectionStroke, this.theme.selectionFill));
+        if (clippedDragRect) {
+            const dragFill = document.createElement("div");
+            setRectStyles(dragFill, clippedDragRect);
+            dragFill.style.background = this.theme.selectionFill;
+            applyOverlayRadius(dragFill, clippedDragRect.radius);
+            fillRects.push(dragFill);
+        }
+        const copiedRings = clippedCopiedRects.map((rect) => createCopiedRing(rect, this.theme.copiedOutline, this.theme.copiedOutlineWidth));
+        layer.root.style.display = fillRects.length > 0 || copiedRings.length > 0 ? "block" : "none";
+        layer.fillLayer.replaceChildren(...fillRects);
+        layer.ringLayer.replaceChildren(...copiedRings);
+    }
+    /**
+     * Removes both overlay roots from the document and restores the host position.
      */
     destroy() {
-        this.root.remove();
+        this.base.root.remove();
+        this.frozen.root.remove();
         if (this.previousHostPosition !== null) {
             this.host.style.position = this.previousHostPosition;
             this.previousHostPosition = null;
@@ -838,6 +956,50 @@ function getCoordinateKey(rowId, columnId) {
     return `${rowId}:${columnId}`;
 }
 /**
+ * Resolves a computed-style reader, guarding SSR / no-window environments.
+ */
+function getComputeStyle() {
+    if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+        return window.getComputedStyle.bind(window);
+    }
+    if (typeof globalThis.getComputedStyle === "function") {
+        return globalThis.getComputedStyle.bind(globalThis);
+    }
+    return null;
+}
+/**
+ * Detects whether a rendered cell is a left-pinned (frozen) sticky cell.
+ *
+ * Scope is intentionally left-pin only: a right-pinned column computes
+ * `left: auto`, so it is treated as scrolling and the overlay degrades to its
+ * single-layer behavior.
+ */
+function isLeftPinnedCell(element, computeStyle) {
+    const style = computeStyle(element);
+    if (!style) {
+        return false;
+    }
+    const position = style.position;
+    const left = style.left;
+    return position === "sticky" && !!left && left !== "auto";
+}
+/**
+ * Derives the set of frozen (left-pinned) column ids from the rendered cells.
+ */
+function detectFrozenColumnIds(cells) {
+    const frozenColumnIds = new Set();
+    const computeStyle = getComputeStyle();
+    if (!computeStyle) {
+        return frozenColumnIds;
+    }
+    cells.forEach((cell) => {
+        if (isLeftPinnedCell(cell.element, computeStyle)) {
+            cell.aliases.forEach((alias) => frozenColumnIds.add(alias.columnId));
+        }
+    });
+    return frozenColumnIds;
+}
+/**
  * Builds a logical table model from the current DOM table structure.
  */
 function buildDOMTableModel(table, options = {}) {
@@ -878,13 +1040,18 @@ function buildDOMTableModel(table, options = {}) {
             searchColumnIndex = columnIndex + colSpan;
         });
     });
-    const columns = Array.from({ length: maxColumnCount }, (_, index) => ({ id: getColumnId(index) }));
+    const frozenColumnIds = detectFrozenColumnIds(cells);
+    const columns = Array.from({ length: maxColumnCount }, (_, index) => {
+        const id = getColumnId(index);
+        return frozenColumnIds.has(id) ? { id, frozen: true } : { id };
+    });
     return {
         rows,
         columns,
         cells,
         cellByCoordinate,
         copyValueByCoordinate,
+        frozenColumnIds,
     };
 }
 Object.assign(exports,{getCoordinateKey,buildDOMTableModel});},"dom/enhance-table.js":function(exports,__require){const { copySelectionToText,resolveCopySelection } = __require("core/copy-plan.js");
@@ -1194,18 +1361,13 @@ function readSelectionCornerRadii(table, overlayHost) {
     return null;
 }
 /**
- * Measures the on-screen rectangle covered by a logical selection.
+ * Unions the painted pixel edges of a group of cells into one rectangle.
  */
-function getOverlayRect(selection, model, rowIndexMap, columnIndexMap, overlayHost = null, cornerRadii = null) {
-    const bounds = getSelectionBounds(selection, rowIndexMap, columnIndexMap);
-    if (!bounds) {
+function measureGroup(cells, overlayHost) {
+    if (cells.length === 0) {
         return null;
     }
-    const selectedCells = model.cells.filter((cell) => cellIntersectsSelectionBounds(cell, bounds, rowIndexMap, columnIndexMap));
-    if (selectedCells.length === 0) {
-        return null;
-    }
-    const selectionEdges = selectedCells.reduce((edges, cell) => {
+    return cells.reduce((edges, cell) => {
         const measuredEdges = getMeasuredCellEdges(cell.element, overlayHost);
         return {
             left: Math.min(edges.left, measuredEdges.left),
@@ -1213,35 +1375,160 @@ function getOverlayRect(selection, model, rowIndexMap, columnIndexMap, overlayHo
             right: Math.max(edges.right, measuredEdges.right),
             bottom: Math.max(edges.bottom, measuredEdges.bottom),
         };
-    }, getMeasuredCellEdges(selectedCells[0].element, overlayHost));
-    const width = selectionEdges.right - selectionEdges.left;
-    const height = selectionEdges.bottom - selectionEdges.top;
-    if (width <= 0 || height <= 0) {
+    }, getMeasuredCellEdges(cells[0].element, overlayHost));
+}
+/**
+ * Unions only the painted viewport X edges of a group of cells.
+ */
+function measureViewportX(cells) {
+    if (cells.length === 0) {
         return null;
     }
-    let radius;
-    if (cornerRadii) {
-        const atTop = bounds.minRow === 0;
-        const atBottom = bounds.maxRow === model.rows.length - 1;
-        const atLeft = bounds.minColumn === 0;
-        const atRight = bounds.maxColumn === model.columns.length - 1;
-        const resolved = {
-            tl: atTop && atLeft ? cornerRadii.tl : "0",
-            tr: atTop && atRight ? cornerRadii.tr : "0",
-            br: atBottom && atRight ? cornerRadii.br : "0",
-            bl: atBottom && atLeft ? cornerRadii.bl : "0",
+    return cells.reduce((edges, cell) => {
+        const rect = cell.element.getBoundingClientRect();
+        return {
+            left: Math.min(edges.left, Math.floor(rect.left)),
+            right: Math.max(edges.right, Math.ceil(rect.right)),
         };
-        if (resolved.tl !== "0" || resolved.tr !== "0" || resolved.br !== "0" || resolved.bl !== "0") {
-            radius = resolved;
+    }, {
+        left: Math.floor(cells[0].element.getBoundingClientRect().left),
+        right: Math.ceil(cells[0].element.getBoundingClientRect().right),
+    });
+}
+/**
+ * Resolves the rounded corners for one selection piece.
+ *
+ * `suppressLeft` / `suppressRight` force the corners on an interior seam edge to
+ * square off so a boundary-spanning selection keeps its true outer corners while
+ * the frozen/scrolling pieces meet flush at the freeze line.
+ */
+function resolveOverlayRadius(bounds, model, cornerRadii, suppressLeft, suppressRight) {
+    if (!cornerRadii) {
+        return undefined;
+    }
+    const atTop = bounds.minRow === 0;
+    const atBottom = bounds.maxRow === model.rows.length - 1;
+    const atLeft = bounds.minColumn === 0;
+    const atRight = bounds.maxColumn === model.columns.length - 1;
+    const resolved = {
+        tl: atTop && atLeft && !suppressLeft ? cornerRadii.tl : "0",
+        tr: atTop && atRight && !suppressRight ? cornerRadii.tr : "0",
+        br: atBottom && atRight && !suppressRight ? cornerRadii.br : "0",
+        bl: atBottom && atLeft && !suppressLeft ? cornerRadii.bl : "0",
+    };
+    if (resolved.tl !== "0" || resolved.tr !== "0" || resolved.br !== "0" || resolved.bl !== "0") {
+        return resolved;
+    }
+    return undefined;
+}
+/**
+ * Checks whether a rendered cell belongs to a frozen (left-pinned) column.
+ */
+function cellIsFrozen(cell, model) {
+    return cell.aliases.some((alias) => model.frozenColumnIds.has(alias.columnId));
+}
+/**
+ * Measures the on-screen rectangles covered by a logical selection, split at the
+ * freeze boundary into a pinned (`frozen`) piece and a scrolling piece.
+ *
+ * When no columns are frozen every cell falls into the scrolling piece with no
+ * stroke override, reproducing the historical single-rectangle output. When a
+ * selection spans the boundary, the interior seam edges are suppressed
+ * (`stroke.right = false` on the frozen piece, `stroke.left = false` on the
+ * scrolling piece) so the two pieces read as one continuous highlight.
+ */
+function getOverlayRects(selection, model, rowIndexMap, columnIndexMap, overlayHost = null, cornerRadii = null, frozenBand = null) {
+    const empty = { frozen: null, scrolling: null };
+    const bounds = getSelectionBounds(selection, rowIndexMap, columnIndexMap);
+    if (!bounds) {
+        return empty;
+    }
+    const selectedCells = model.cells.filter((cell) => cellIntersectsSelectionBounds(cell, bounds, rowIndexMap, columnIndexMap));
+    if (selectedCells.length === 0) {
+        return empty;
+    }
+    const frozenCells = selectedCells.filter((cell) => cellIsFrozen(cell, model));
+    const scrollingCells = selectedCells.filter((cell) => !cellIsFrozen(cell, model));
+    const spansBoundary = frozenCells.length > 0 && scrollingCells.length > 0;
+    const buildRect = (cells, suppressLeft, suppressRight, useFrozenBand) => {
+        const edges = measureGroup(cells, overlayHost);
+        if (!edges) {
+            return null;
         }
+        const width = edges.right - edges.left;
+        const height = edges.bottom - edges.top;
+        if (width <= 0 || height <= 0) {
+            return null;
+        }
+        const stroke = spansBoundary
+            ? { top: true, right: !suppressRight, bottom: true, left: !suppressLeft }
+            : undefined;
+        const viewportX = useFrozenBand ? measureViewportX(cells) : null;
+        if (useFrozenBand && (!frozenBand || !viewportX)) {
+            return null;
+        }
+        return {
+            // Frozen X is stable and local to the native sticky surface. Vertical
+            // geometry deliberately remains in the existing content coordinate space.
+            left: useFrozenBand && viewportX && frozenBand ? viewportX.left - frozenBand.viewportLeft : edges.left,
+            top: edges.top,
+            width: useFrozenBand && viewportX ? viewportX.right - viewportX.left : width,
+            height,
+            radius: resolveOverlayRadius(bounds, model, cornerRadii, suppressLeft, suppressRight),
+            stroke,
+        };
+    };
+    return {
+        frozen: frozenCells.length > 0 ? buildRect(frozenCells, false, spansBoundary, true) : null,
+        scrolling: scrollingCells.length > 0 ? buildRect(scrollingCells, spansBoundary, false, false) : null,
+    };
+}
+/**
+ * Checks whether an overflow value establishes the scrollport used by sticky X.
+ */
+function isStickyScrollOverflowValue(value) {
+    return value === "auto" || value === "scroll" || value === "hidden" || value === "overlay";
+}
+/**
+ * Finds the viewport edge that CSS uses for the frozen band's sticky inset.
+ * `overflow: clip` intentionally does not establish a sticky scrollport.
+ */
+function getStickyScrollportLeft(overlayHost) {
+    let ancestor = overlayHost;
+    while (ancestor) {
+        const { overflowX } = getElementOverflowStyles(ancestor);
+        if (isStickyScrollOverflowValue(overflowX)) {
+            return ancestor.getBoundingClientRect().left;
+        }
+        ancestor = ancestor.parentElement;
+    }
+    return 0;
+}
+/**
+ * Measures the frozen cells' painted band once and converts its left edge to the
+ * inset understood by the native sticky surface.
+ */
+function getFrozenBandGeometry(model, overlayHost) {
+    const frozenCells = model.cells.filter((cell) => cellIsFrozen(cell, model));
+    const viewportX = measureViewportX(frozenCells);
+    if (!viewportX) {
+        return null;
     }
     return {
-        left: selectionEdges.left,
-        top: selectionEdges.top,
-        width,
-        height,
-        radius,
+        left: viewportX.left - getStickyScrollportLeft(overlayHost),
+        width: viewportX.right - viewportX.left,
+        viewportLeft: viewportX.left,
+        viewportRight: viewportX.right,
     };
+}
+/**
+ * Converts a viewport X edge to the base layer's existing coordinate space.
+ */
+function viewportXToOverlayContent(value, overlayHost) {
+    if (!overlayHost) {
+        return value;
+    }
+    return value - overlayHost.getBoundingClientRect().left + overlayHost.scrollLeft;
 }
 /**
  * Checks whether an overflow value creates a clipping boundary for descendants.
@@ -1603,24 +1890,54 @@ function enhanceTable(table, options = {}) {
      */
     const renderOverlay = () => {
         const cornerRadii = readSelectionCornerRadii(table, overlayHost);
-        const selectionRects = selectionRanges
-            .map((selection) => {
-            const rect = getOverlayRect(selection, model, rowIndexMap, columnIndexMap, overlayHost, cornerRadii);
-            if (!rect) {
-                return null;
+        const frozenBand = getFrozenBandGeometry(model, overlayHost);
+        const baseSelectionRects = [];
+        const frozenSelectionRects = [];
+        selectionRanges.forEach((selection) => {
+            const { frozen, scrolling } = getOverlayRects(selection, model, rowIndexMap, columnIndexMap, overlayHost, cornerRadii, frozenBand);
+            const key = getSelectionKey(selection);
+            if (scrolling) {
+                baseSelectionRects.push({ key, ...scrolling });
             }
-            return {
-                key: getSelectionKey(selection),
-                ...rect,
-            };
-        })
-            .filter((rect) => rect !== null);
-        const copiedRects = selectionRects.filter((rect) => copiedSelectionKeys.includes(rect.key));
-        const nextDragRect = dragState
-            ? getOverlayRect(dragState.selection, model, rowIndexMap, columnIndexMap, overlayHost, cornerRadii)
+            if (frozen) {
+                frozenSelectionRects.push({ key, ...frozen });
+            }
+        });
+        const baseCopiedRects = baseSelectionRects.filter((rect) => copiedSelectionKeys.includes(rect.key));
+        const frozenCopiedRects = frozenSelectionRects.filter((rect) => copiedSelectionKeys.includes(rect.key));
+        let baseDragRect = null;
+        let frozenDragRect = null;
+        if (dragState) {
+            const { frozen, scrolling } = getOverlayRects(dragState.selection, model, rowIndexMap, columnIndexMap, overlayHost, cornerRadii, frozenBand);
+            if (scrolling) {
+                baseDragRect = { key: "drag-selection", ...scrolling };
+            }
+            if (frozen) {
+                frozenDragRect = { key: "drag-selection", ...frozen };
+            }
+        }
+        const baseClip = getOverlayClipRect(table, overlayHost);
+        const bandRight = frozenBand ? viewportXToOverlayContent(frozenBand.viewportRight, overlayHost) : null;
+        // The scrolling layer paints right of the band; the pinned layer paints left
+        // of it. With no frozen columns bandRight is null and the scrolling clip is
+        // exactly the historical clip, keeping the single-layer output unchanged.
+        const scrollClip = baseClip && bandRight !== null ? { ...baseClip, left: Math.max(baseClip.left, bandRight) } : baseClip;
+        const frozenClip = baseClip && frozenBand
+            ? { top: baseClip.top, right: frozenBand.width, bottom: baseClip.bottom, left: 0 }
             : null;
-        const clipRect = getOverlayClipRect(table, overlayHost);
-        overlay.render(selectionRects, copiedRects, nextDragRect ? { key: "drag-selection", ...nextDragRect } : null, clipRect);
+        const base = {
+            selectionRects: baseSelectionRects,
+            copiedRects: baseCopiedRects,
+            dragRect: baseDragRect,
+            clip: scrollClip,
+        };
+        const frozenLayer = {
+            selectionRects: frozenSelectionRects,
+            copiedRects: frozenCopiedRects,
+            dragRect: frozenDragRect,
+            clip: frozenClip,
+        };
+        overlay.render({ base, frozen: { ...frozenLayer, band: frozenBand } });
     };
     /**
      * Schedules one overlay render on the next animation frame.

@@ -16,6 +16,11 @@ export interface DOMTableModel {
   cells: DOMTableCell[];
   cellByCoordinate: Map<string, DOMTableCell>;
   copyValueByCoordinate: Map<string, string>;
+  /**
+   * Ids of the columns detected as frozen (left-pinned sticky) from the DOM.
+   * Empty when nothing is frozen, keeping the selection overlay single-layer.
+   */
+  frozenColumnIds: Set<string>;
 }
 
 export type DOMTableSelectionScope = "all" | "tbody";
@@ -158,6 +163,60 @@ export function getCoordinateKey(rowId: string, columnId: string) {
 }
 
 /**
+ * Resolves a computed-style reader, guarding SSR / no-window environments.
+ */
+function getComputeStyle(): ((element: Element) => CSSStyleDeclaration) | null {
+  if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+    return window.getComputedStyle.bind(window);
+  }
+
+  if (typeof globalThis.getComputedStyle === "function") {
+    return globalThis.getComputedStyle.bind(globalThis);
+  }
+
+  return null;
+}
+
+/**
+ * Detects whether a rendered cell is a left-pinned (frozen) sticky cell.
+ *
+ * Scope is intentionally left-pin only: a right-pinned column computes
+ * `left: auto`, so it is treated as scrolling and the overlay degrades to its
+ * single-layer behavior.
+ */
+function isLeftPinnedCell(element: HTMLTableCellElement, computeStyle: (element: Element) => CSSStyleDeclaration) {
+  const style = computeStyle(element);
+
+  if (!style) {
+    return false;
+  }
+
+  const position = style.position;
+  const left = style.left;
+  return position === "sticky" && !!left && left !== "auto";
+}
+
+/**
+ * Derives the set of frozen (left-pinned) column ids from the rendered cells.
+ */
+function detectFrozenColumnIds(cells: DOMTableCell[]) {
+  const frozenColumnIds = new Set<string>();
+  const computeStyle = getComputeStyle();
+
+  if (!computeStyle) {
+    return frozenColumnIds;
+  }
+
+  cells.forEach((cell) => {
+    if (isLeftPinnedCell(cell.element, computeStyle)) {
+      cell.aliases.forEach((alias) => frozenColumnIds.add(alias.columnId));
+    }
+  });
+
+  return frozenColumnIds;
+}
+
+/**
  * Builds a logical table model from the current DOM table structure.
  */
 export function buildDOMTableModel(table: HTMLTableElement, options: BuildDOMTableModelOptions = {}): DOMTableModel {
@@ -208,7 +267,11 @@ export function buildDOMTableModel(table: HTMLTableElement, options: BuildDOMTab
     });
   });
 
-  const columns = Array.from({ length: maxColumnCount }, (_, index) => ({ id: getColumnId(index) }));
+  const frozenColumnIds = detectFrozenColumnIds(cells);
+  const columns: SelectableItem[] = Array.from({ length: maxColumnCount }, (_, index) => {
+    const id = getColumnId(index);
+    return frozenColumnIds.has(id) ? { id, frozen: true } : { id };
+  });
 
   return {
     rows,
@@ -216,5 +279,6 @@ export function buildDOMTableModel(table: HTMLTableElement, options: BuildDOMTab
     cells,
     cellByCoordinate,
     copyValueByCoordinate,
+    frozenColumnIds,
   };
 }

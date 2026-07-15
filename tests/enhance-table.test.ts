@@ -37,6 +37,9 @@ class FakeEvent {
 
 class FakeWindow {
   private listeners = new Map<string, Set<Listener>>();
+  private animationFrames = new Map<number, FrameRequestCallback>();
+  private nextAnimationFrameId = 1;
+  private queuesAnimationFrames = false;
   innerWidth = 1024;
   innerHeight = 768;
 
@@ -62,11 +65,35 @@ class FakeWindow {
   }
 
   requestAnimationFrame(callback: FrameRequestCallback) {
-    callback(0);
-    return 1;
+    const id = this.nextAnimationFrameId;
+    this.nextAnimationFrameId += 1;
+
+    if (this.queuesAnimationFrames) {
+      this.animationFrames.set(id, callback);
+    } else {
+      callback(0);
+    }
+
+    return id;
   }
 
-  cancelAnimationFrame() {}
+  cancelAnimationFrame(id: number) {
+    this.animationFrames.delete(id);
+  }
+
+  setAnimationFrameQueueing(enabled: boolean) {
+    this.queuesAnimationFrames = enabled;
+  }
+
+  flushAnimationFrames() {
+    const callbacks = Array.from(this.animationFrames.values());
+    this.animationFrames.clear();
+    callbacks.forEach((callback) => callback(0));
+  }
+
+  get pendingAnimationFrameCount() {
+    return this.animationFrames.size;
+  }
 }
 
 class FakeDocument {
@@ -130,6 +157,10 @@ class FakeDocument {
 
   elementFromPoint(clientX: number, clientY: number) {
     return this.elementFromPointResolver?.(clientX, clientY) ?? null;
+  }
+
+  execCommand() {
+    return true;
   }
 
   addEventListener(type: string, listener: Listener) {
@@ -338,6 +369,8 @@ class FakeElement {
   focus() {
     this.ownerDocument.activeElement = this;
   }
+
+  select() {}
 
   setBoundingClientRect(rect: Rect) {
     this.rect = rect;
@@ -1217,6 +1250,355 @@ test("enhanceTable plugins can implement delete behavior from the current select
 
     assert.equal(cleared.join(","), "row-1:column-1");
     assert.deepEqual(handle.getSelections(), []);
+  } finally {
+    restore();
+  }
+});
+
+function getOverlayRoots(document: FakeDocument) {
+  const roots = new Map<string, FakeHTMLElement>();
+  const walk = (element: FakeElement) => {
+    const kind = element.getAttribute("data-table-steroids-overlay");
+
+    if (kind) {
+      roots.set(kind, element as FakeHTMLElement);
+    }
+
+    element.childNodes.forEach(walk);
+  };
+
+  walk(document.body);
+  return [roots.get("base"), roots.get("frozen")] as const;
+}
+
+function getLayerFill(root: FakeHTMLElement | undefined) {
+  const surface = root?.getAttribute("data-table-steroids-overlay") === "frozen" ? root.childNodes[0] : root;
+  return surface?.childNodes[0]?.childNodes[0];
+}
+
+// A 3-column × 2-row grid whose first column is left-pinned (sticky), so column-0
+// is detected as frozen and the overlay splits at the 50px freeze boundary.
+function createFrozenGridFixture(document: FakeDocument) {
+  const table = document.createElement("table") as FakeHTMLTableElement;
+  const tbody = document.createElement("tbody") as FakeHTMLTableSectionElement;
+  const firstRow = document.createElement("tr") as FakeHTMLTableRowElement;
+  const secondRow = document.createElement("tr") as FakeHTMLTableRowElement;
+  const cells = {
+    frozenTop: document.createElement("td") as FakeHTMLTableCellElement,
+    midTop: document.createElement("td") as FakeHTMLTableCellElement,
+    rightTop: document.createElement("td") as FakeHTMLTableCellElement,
+    frozenBottom: document.createElement("td") as FakeHTMLTableCellElement,
+    midBottom: document.createElement("td") as FakeHTMLTableCellElement,
+    rightBottom: document.createElement("td") as FakeHTMLTableCellElement,
+  };
+
+  table.setBoundingClientRect({ left: 0, top: 0, right: 150, bottom: 40, width: 150, height: 40 });
+  firstRow.setBoundingClientRect({ left: 0, top: 0, right: 150, bottom: 20, width: 150, height: 20 });
+  secondRow.setBoundingClientRect({ left: 0, top: 20, right: 150, bottom: 40, width: 150, height: 20 });
+  cells.frozenTop.setBoundingClientRect({ left: 0, top: 0, right: 50, bottom: 20, width: 50, height: 20 });
+  cells.midTop.setBoundingClientRect({ left: 50, top: 0, right: 100, bottom: 20, width: 50, height: 20 });
+  cells.rightTop.setBoundingClientRect({ left: 100, top: 0, right: 150, bottom: 20, width: 50, height: 20 });
+  cells.frozenBottom.setBoundingClientRect({ left: 0, top: 20, right: 50, bottom: 40, width: 50, height: 20 });
+  cells.midBottom.setBoundingClientRect({ left: 50, top: 20, right: 100, bottom: 40, width: 50, height: 20 });
+  cells.rightBottom.setBoundingClientRect({ left: 100, top: 20, right: 150, bottom: 40, width: 50, height: 20 });
+
+  // Left-pin the first column.
+  [cells.frozenTop, cells.frozenBottom].forEach((cell) => {
+    cell.style.position = "sticky";
+    cell.style.left = "0px";
+  });
+
+  firstRow.append(cells.frozenTop, cells.midTop, cells.rightTop);
+  secondRow.append(cells.frozenBottom, cells.midBottom, cells.rightBottom);
+  tbody.append(firstRow, secondRow);
+  table.append(tbody);
+  document.body.appendChild(table);
+  document.elementFromPointResolver = (clientX, clientY) => {
+    const column = clientX < 50 ? 0 : clientX < 100 ? 1 : 2;
+    const row = clientY < 20 ? 0 : 1;
+    const grid = [
+      [cells.frozenTop, cells.midTop, cells.rightTop],
+      [cells.frozenBottom, cells.midBottom, cells.rightBottom],
+    ];
+
+    return grid[row][column];
+  };
+
+  return { table, cells };
+}
+
+test("buildDOMTableModel detects left-pinned columns as frozen", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { buildDOMTableModel } = await import("../dist/dom.js");
+    const { table } = createFrozenGridFixture(document);
+    const model = buildDOMTableModel(table);
+
+    assert.deepEqual(Array.from(model.frozenColumnIds), ["column-0"]);
+    assert.equal(model.columns[0]?.frozen, true);
+    assert.equal(model.columns[1]?.frozen, undefined);
+    assert.equal(model.columns[2]?.frozen, undefined);
+  } finally {
+    restore();
+  }
+});
+
+// The frozen grid inside a horizontally-scrolled overflow container. Column-0 is
+// left-pinned, so its cells keep their viewport position while the rest scroll.
+function createScrolledFrozenFixture(document: FakeDocument, scrollLeft: number) {
+  const scroller = document.createElement("div") as FakeHTMLElement;
+  const { table, cells } = createFrozenGridFixture(document);
+
+  table.remove();
+  scroller.style.overflow = "auto";
+  scroller.setBoundingClientRect({ left: 0, top: 0, right: 100, bottom: 40, width: 100, height: 40 });
+  scroller.scrollLeft = scrollLeft;
+  scroller.scrollWidth = 150;
+  scroller.scrollHeight = 40;
+  scroller.appendChild(table);
+  document.body.appendChild(scroller);
+
+  // Re-pin the frozen column to the scrollport left, shift the scrolling columns.
+  const pin = (cell: FakeHTMLTableCellElement, top: number) =>
+    cell.setBoundingClientRect({ left: 0, top, right: 50, bottom: top + 20, width: 50, height: 20 });
+  const shift = (cell: FakeHTMLTableCellElement, contentLeft: number, top: number) =>
+    cell.setBoundingClientRect({
+      left: contentLeft - scrollLeft,
+      top,
+      right: contentLeft + 50 - scrollLeft,
+      bottom: top + 20,
+      width: 50,
+      height: 20,
+    });
+
+  pin(cells.frozenTop, 0);
+  pin(cells.frozenBottom, 20);
+  shift(cells.midTop, 50, 0);
+  shift(cells.midBottom, 50, 20);
+  shift(cells.rightTop, 100, 0);
+  shift(cells.rightBottom, 100, 20);
+  table.setBoundingClientRect({ left: -scrollLeft, top: 0, right: 150 - scrollLeft, bottom: 40, width: 150, height: 40 });
+
+  return { scroller, table, cells };
+}
+
+test("enhanceTable keeps frozen X aligned before a queued scroll render runs", async () => {
+  const { document, window, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { scroller, table, cells } = createScrolledFrozenFixture(document, 30);
+
+    enhanceTable(table, { interactionMode: "desktop", observeMutations: false });
+    window.setAnimationFrameQueueing(true);
+    clickCell(table, cells.frozenTop);
+    window.flushAnimationFrames();
+
+    const [baseRoot, frozenRoot] = getOverlayRoots(document);
+    const frozenBand = frozenRoot?.childNodes[0];
+
+    assert.equal(frozenRoot?.getAttribute("data-table-steroids-overlay"), "frozen");
+    assert.equal(frozenBand?.style.position, "sticky");
+    assert.equal(frozenBand?.style.left, "0px");
+    assert.equal(frozenBand?.style.width, "50px");
+    assert.equal(frozenBand?.style.top ?? "", "");
+    assert.equal(getLayerFill(frozenRoot)?.style.left, "0px");
+    assert.equal(getLayerFill(frozenRoot)?.style.width, "50px");
+    assert.equal(frozenRoot?.style.clipPath ?? "", "");
+    // Purely-frozen selection: nothing on the base layer.
+    assert.equal(baseRoot?.style.display, "none");
+
+    // The scroll handler queues geometry invalidation, but horizontal correctness
+    // already comes from the sticky band and its stable local X coordinates.
+    scroller.scrollLeft = 60;
+    document.dispatchEvent(new FakeEvent("scroll"));
+
+    assert.equal(window.pendingAnimationFrameCount, 1);
+    assert.equal(frozenBand?.style.left, "0px");
+    assert.equal(getLayerFill(frozenRoot)?.style.left, "0px");
+
+    window.flushAnimationFrames();
+    assert.equal(getLayerFill(getOverlayRoots(document)[1])?.style.left, "0px");
+  } finally {
+    restore();
+  }
+});
+
+test("enhanceTable builds two stacked overlay roots with the configured z-indices", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table } = createFrozenGridFixture(document);
+
+    enhanceTable(table, {
+      interactionMode: "desktop",
+      observeMutations: false,
+      overlay: { zIndex: 13, frozenZIndex: 20 },
+    });
+
+    const roots = getOverlayRoots(document);
+
+    assert.equal(roots.length, 2);
+    assert.equal(roots[0]?.style.zIndex, "13");
+    assert.equal(roots[1]?.style.zIndex, "20");
+    assert.equal(roots[0]?.getAttribute("data-table-steroids-overlay"), "base");
+    assert.equal(roots[1]?.getAttribute("data-table-steroids-overlay"), "frozen");
+  } finally {
+    restore();
+  }
+});
+
+test("enhanceTable paints a purely scrolling selection only on the base layer, clipped to the frozen band", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table, cells } = createFrozenGridFixture(document);
+
+    enhanceTable(table, { interactionMode: "desktop", observeMutations: false });
+    clickCell(table, cells.midTop);
+
+    const [baseRoot, frozenRoot] = getOverlayRoots(document);
+    const baseFill = getLayerFill(baseRoot);
+
+    // Non-frozen selection: only the base layer paints.
+    assert.equal(frozenRoot?.style.display, "none");
+    assert.equal(baseFill?.style.left, "50px");
+    assert.equal(baseFill?.style.width, "50px");
+    // The base layer is left-bounded to the 50px band so it can't paint under the pins.
+    assert.equal(baseRoot?.style.clipPath, "inset(0px 874px 728px 50px)");
+  } finally {
+    restore();
+  }
+});
+
+test("enhanceTable splits a boundary-spanning selection and suppresses the interior seam edges", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table, cells } = createFrozenGridFixture(document);
+
+    enhanceTable(table, {
+      interactionMode: "desktop",
+      observeMutations: false,
+      overlay: { selectionStroke: "red" },
+    });
+
+    // Select the whole grid, spanning the frozen column and the scrolling columns.
+    clickCell(table, cells.frozenTop);
+    clickCell(table, cells.rightBottom, { shiftKey: true });
+
+    const [baseRoot, frozenRoot] = getOverlayRoots(document);
+    const baseFill = getLayerFill(baseRoot);
+    const frozenFill = getLayerFill(frozenRoot);
+
+    assert.ok(baseFill, "expected a scrolling (base) rect");
+    assert.ok(frozenFill, "expected a pinned (frozen) rect");
+
+    // Base (scrolling) piece: left seam edge dropped (stroke.left = false).
+    assert.equal(baseFill?.style.left, "50px");
+    assert.equal(baseFill?.style.width, "100px");
+    assert.equal(baseFill?.style.boxShadow, "inset 0 1px 0 0 red, inset -1px 0 0 0 red, inset 0 -1px 0 0 red");
+
+    // Frozen (pinned) piece: right seam edge dropped (stroke.right = false).
+    assert.equal(frozenFill?.style.left, "0px");
+    assert.equal(frozenFill?.style.width, "50px");
+    assert.equal(frozenFill?.style.boxShadow, "inset 0 1px 0 0 red, inset 0 -1px 0 0 red, inset 1px 0 0 0 red");
+  } finally {
+    restore();
+  }
+});
+
+function getLayerRing(root: FakeHTMLElement | undefined) {
+  const surface = root?.getAttribute("data-table-steroids-overlay") === "frozen" ? root.childNodes[0] : root;
+  return surface?.childNodes[1]?.childNodes[0];
+}
+
+test("enhanceTable suppresses the copied dashed ring's interior seam edge across the boundary", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table, cells } = createFrozenGridFixture(document);
+    const handle = enhanceTable(table, {
+      interactionMode: "desktop",
+      observeMutations: false,
+      overlay: { copiedOutline: "blue", copiedOutlineWidth: 2 },
+    });
+
+    clickCell(table, cells.frozenTop);
+    clickCell(table, cells.rightBottom, { shiftKey: true });
+    await handle.copySelection();
+
+    const [baseRoot, frozenRoot] = getOverlayRoots(document);
+    const baseRing = getLayerRing(baseRoot);
+    const frozenRing = getLayerRing(frozenRoot);
+
+    assert.ok(baseRing, "expected a scrolling (base) copied ring");
+    assert.ok(frozenRing, "expected a pinned (frozen) copied ring");
+
+    // The seam sides are dropped; every other side keeps the dashed border.
+    assert.equal(baseRing?.style.borderLeft, "0");
+    assert.equal(baseRing?.style.borderRight, "2px dashed blue");
+    assert.equal(baseRing?.style.borderTop, "2px dashed blue");
+    assert.equal(frozenRing?.style.borderRight, "0");
+    assert.equal(frozenRing?.style.borderLeft, "2px dashed blue");
+    assert.equal(frozenRing?.style.borderTop, "2px dashed blue");
+  } finally {
+    restore();
+  }
+});
+
+test("enhanceTable draws the copied ring as a full outline when no columns are frozen", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table, cells } = createGridTableFixture(document);
+    const handle = enhanceTable(table, {
+      interactionMode: "desktop",
+      observeMutations: false,
+      overlay: { copiedOutline: "blue", copiedOutlineWidth: 2 },
+    });
+
+    clickCell(table, cells.topLeft);
+    clickCell(table, cells.bottomRight, { shiftKey: true });
+    await handle.copySelection();
+
+    const [baseRoot] = getOverlayRoots(document);
+    const baseRing = getLayerRing(baseRoot);
+
+    assert.equal(baseRing?.style.outline, "2px dashed blue");
+    assert.equal(baseRing?.style.borderLeft ?? "", "");
+  } finally {
+    restore();
+  }
+});
+
+test("enhanceTable keeps a single-layer full border when no columns are frozen", async () => {
+  const { document, restore } = installFakeDom();
+
+  try {
+    const { enhanceTable } = await import("../dist/dom.js");
+    const { table, cells } = createGridTableFixture(document);
+
+    enhanceTable(table, {
+      interactionMode: "desktop",
+      observeMutations: false,
+      overlay: { selectionStroke: "red" },
+    });
+    clickCell(table, cells.topLeft);
+    clickCell(table, cells.bottomRight, { shiftKey: true });
+
+    const [baseRoot, frozenRoot] = getOverlayRoots(document);
+    const baseFill = getLayerFill(baseRoot);
+
+    // The frozen layer never paints, and the base border is the single full-box shadow.
+    assert.equal(frozenRoot?.style.display, "none");
+    assert.equal(baseFill?.style.boxShadow, "inset 0 0 0 1px red");
   } finally {
     restore();
   }
