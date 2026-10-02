@@ -14,7 +14,7 @@ writeFileSync(path.join(distDir, "browser.js"), `${browserBundle}\n`, "utf8");
 writeFileSync(path.join(distDir, "bookmarklet-loader.js"), bookmarkletLoader, "utf8");
 
 const bookmarklet = buildBookmarklet(
-  `https://cdn.jsdelivr.net/npm/${packageJson.name}/dist/bookmarklet-loader.js`,
+  `https://cdn.jsdelivr.net/gh/sajadmh/table-steroids@main/dist/bookmarklet-loader.js`,
   bookmarkletLoader,
 );
 

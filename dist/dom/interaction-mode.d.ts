@@ -14,4 +14,3 @@ export interface InteractionModeEnvironment {
  */
 export declare function resolveInteractionMode(interactionMode?: TableSpreadsheetInteractionMode, environment?: InteractionModeEnvironment): ResolvedTableSpreadsheetInteractionMode;
 export {};
-//# sourceMappingURL=interaction-mode.d.ts.map

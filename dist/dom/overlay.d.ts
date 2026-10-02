@@ -100,4 +100,3 @@ export declare class SelectionOverlay {
      */
     destroy(): void;
 }
-//# sourceMappingURL=overlay.d.ts.map

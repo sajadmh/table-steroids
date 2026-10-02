@@ -3,4 +3,3 @@ export { resolveInteractionMode, type InteractionModeEnvironment, type ResolvedT
 export { buildDOMTableModel, getCoordinateKey, type BuildDOMTableModelOptions, type DOMTableCell, type DOMTableModel, type DOMTableSelectionScope, } from "./dom/table-model.js";
 export { DEFAULT_OVERLAY_THEME, type OverlayClipRect, type OverlayRect, type SpreadsheetOverlayTheme } from "./dom/overlay.js";
 export * from "./core.js";
-//# sourceMappingURL=index.d.ts.map

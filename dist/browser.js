@@ -1696,10 +1696,12 @@ function enhanceTable(table, options = {}) {
      * Emits the current selection state through the external callback.
      */
     const emitSelectionChange = () => {
-        const selections = cloneSelections(selectionRanges);
-        const nextActiveSelection = activeSelection ? cloneSelection(activeSelection) : null;
-        options.onSelectionChange?.(selections, nextActiveSelection);
-        if (plugins.length === 0) {
+        if (options.onSelectionChange) {
+            const selections = cloneSelections(selectionRanges);
+            const nextActiveSelection = activeSelection ? cloneSelection(activeSelection) : null;
+            options.onSelectionChange(selections, nextActiveSelection);
+        }
+        if (!plugins.some((plugin) => plugin.onSelectionChange)) {
             return;
         }
         const snapshot = getSelectionSnapshot();
@@ -1784,7 +1786,7 @@ function enhanceTable(table, options = {}) {
      * Gives installed plugins a chance to handle a focused table keydown first.
      */
     const dispatchKeyDownPlugins = (event) => {
-        if (plugins.length === 0) {
+        if (!plugins.some((plugin) => plugin.onKeyDown)) {
             return false;
         }
         const snapshot = getSelectionSnapshot();

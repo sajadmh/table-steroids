@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { enhanceTable } from "../dom/enhance-table.js";
+import { useReactTableSteroids } from "./use-react-table-steroids.js";
 function assignRef(ref, value) {
     if (typeof ref === "function") {
         ref(value);
@@ -10,50 +10,29 @@ function assignRef(ref, value) {
         ref.current = value;
     }
 }
-export const TableSteroids = React.forwardRef(function TableSteroidsWithRef({ allowCellSelection = true, allowRangeSelection = true, activationMode, observeMutations = true, onSelectionCopy, onSelectionChange, getCellText, selectionScope, isSelectableCell, shouldIgnoreEvent, overlay, plugins, ...tableProps }, forwardedRef) {
+export const TableSteroids = React.forwardRef(function TableSteroidsWithRef({ allowCellSelection = true, allowRangeSelection = true, activationMode, interactionMode, observeMutations = true, onSelectionCopy, onSelectionChange, getCellText, selectionScope, isSelectableCell, shouldIgnoreEvent, overlay, plugins, ...tableProps }, forwardedRef) {
     const tableRef = React.useRef(null);
-    React.useEffect(() => {
-        const table = tableRef.current;
-        if (!(table instanceof HTMLTableElement)) {
-            return;
-        }
-        const handle = enhanceTable(table, {
-            allowCellSelection,
-            allowRangeSelection,
-            activationMode,
-            observeMutations,
-            onSelectionCopy,
-            onSelectionChange,
-            getCellText,
-            selectionScope,
-            isSelectableCell,
-            shouldIgnoreEvent,
-            overlay,
-            plugins,
-        });
-        return () => {
-            handle.destroy();
-        };
-    }, [
-        activationMode,
+    useReactTableSteroids(tableRef, {
         allowCellSelection,
         allowRangeSelection,
-        getCellText,
-        isSelectableCell,
+        activationMode,
+        interactionMode,
         observeMutations,
-        onSelectionChange,
         onSelectionCopy,
+        onSelectionChange,
+        getCellText,
+        selectionScope,
+        isSelectableCell,
+        shouldIgnoreEvent,
         overlay,
         plugins,
-        selectionScope,
-        shouldIgnoreEvent,
-    ]);
+    });
+    const ref = React.useCallback((node) => {
+        tableRef.current = node;
+        assignRef(forwardedRef, node);
+    }, [forwardedRef]);
     return React.createElement("table", {
         ...tableProps,
-        ref: (node) => {
-            tableRef.current = node;
-            assignRef(forwardedRef, node);
-        },
+        ref,
     });
 });
-//# sourceMappingURL=react-table-steroids.js.map

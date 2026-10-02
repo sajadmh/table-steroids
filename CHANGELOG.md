@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Avoid cloning selections and scanning selected cells when no callback or matching plugin listener needs them.
+- Limit npm contents to library ESM modules and declarations; omit standalone browser/bookmarklet bundles and source/declaration maps.
+- Serve newly generated bookmarklets from the repository CDN instead of the npm package. Existing npm CDN bookmarklets should be replaced when upgrading.
+- Build with declared TypeScript and official React type dependencies, preserving React component, ref, and native table prop types.
+- Forward `interactionMode` through both React APIs, share enhancer setup through the hook, and keep the component ref callback stable.
+
 ## 0.2.3
 
 ### Added

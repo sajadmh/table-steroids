@@ -49,4 +49,3 @@ if (typeof window !== "undefined") {
     };
     getBrowserGlobal()[API_GLOBAL_KEY] = api;
 }
-//# sourceMappingURL=browser-runtime.js.map

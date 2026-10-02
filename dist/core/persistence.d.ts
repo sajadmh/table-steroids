@@ -14,4 +14,3 @@ export declare function restoreSelectionState(snapshot: SelectionStateSnapshot, 
     selections: Selection[];
     activeSelection: Selection | null;
 };
-//# sourceMappingURL=persistence.d.ts.map

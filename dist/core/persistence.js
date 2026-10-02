@@ -67,4 +67,3 @@ export function restoreSelectionState(snapshot, rows, columns) {
         activeSelection: resolveActiveSelection(normalizedSelections, restoredActiveSelection, rowIndexMap, columnIndexMap),
     };
 }
-//# sourceMappingURL=persistence.js.map

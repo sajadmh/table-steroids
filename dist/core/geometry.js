@@ -264,4 +264,3 @@ export function getSelectionKey(selection) {
 export function toCoordinateKey(coordinates) {
     return `${coordinates.rowId}:${coordinates.columnId}`;
 }
-//# sourceMappingURL=geometry.js.map

@@ -58,4 +58,3 @@ export async function copyTextToClipboard(text, html) {
     }
     return copyTextWithExecCommand({ text, html });
 }
-//# sourceMappingURL=clipboard.js.map

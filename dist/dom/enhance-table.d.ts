@@ -73,4 +73,3 @@ export declare function enhanceTable(table: HTMLTableElement, options?: TableSpr
  * Enhances every matching table under a root and returns a collection handle.
  */
 export declare function enhanceTables(root?: ParentNode, options?: EnhanceTablesOptions): TableSpreadsheetCollectionHandle;
-//# sourceMappingURL=enhance-table.d.ts.map

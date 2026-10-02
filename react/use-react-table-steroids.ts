@@ -12,6 +12,7 @@ export function useReactTableSteroids(
     allowCellSelection = true,
     allowRangeSelection = true,
     activationMode,
+    interactionMode,
     observeMutations = true,
     onSelectionCopy,
     onSelectionChange,
@@ -30,20 +31,21 @@ export function useReactTableSteroids(
       return;
     }
 
-      const handle = enhanceTable(table, {
-        allowCellSelection,
-        allowRangeSelection,
-        activationMode,
-        observeMutations,
-        onSelectionCopy,
-        onSelectionChange,
-        getCellText,
-        selectionScope,
-        isSelectableCell,
-        shouldIgnoreEvent,
-        overlay,
-        plugins,
-      });
+    const handle = enhanceTable(table, {
+      allowCellSelection,
+      allowRangeSelection,
+      activationMode,
+      interactionMode,
+      observeMutations,
+      onSelectionCopy,
+      onSelectionChange,
+      getCellText,
+      selectionScope,
+      isSelectableCell,
+      shouldIgnoreEvent,
+      overlay,
+      plugins,
+    });
 
     handleRef.current = handle;
 
@@ -56,6 +58,7 @@ export function useReactTableSteroids(
     };
   }, [
     activationMode,
+    interactionMode,
     allowCellSelection,
     allowRangeSelection,
     getCellText,

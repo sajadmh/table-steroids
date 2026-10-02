@@ -303,4 +303,3 @@ export class SelectionOverlay {
         }
     }
 }
-//# sourceMappingURL=overlay.js.map

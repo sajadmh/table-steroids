@@ -19,4 +19,3 @@ export function resolveInteractionMode(interactionMode = "auto", environment = g
     }
     return "desktop";
 }
-//# sourceMappingURL=interaction-mode.js.map

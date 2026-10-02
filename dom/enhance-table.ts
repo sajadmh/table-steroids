@@ -954,12 +954,13 @@ export function enhanceTable(table: HTMLTableElement, options: TableSpreadsheetO
    * Emits the current selection state through the external callback.
    */
   const emitSelectionChange = () => {
-    const selections = cloneSelections(selectionRanges);
-    const nextActiveSelection = activeSelection ? cloneSelection(activeSelection) : null;
+    if (options.onSelectionChange) {
+      const selections = cloneSelections(selectionRanges);
+      const nextActiveSelection = activeSelection ? cloneSelection(activeSelection) : null;
+      options.onSelectionChange(selections, nextActiveSelection);
+    }
 
-    options.onSelectionChange?.(selections, nextActiveSelection);
-
-    if (plugins.length === 0) {
+    if (!plugins.some((plugin) => plugin.onSelectionChange)) {
       return;
     }
 
@@ -1078,7 +1079,7 @@ export function enhanceTable(table: HTMLTableElement, options: TableSpreadsheetO
    * Gives installed plugins a chance to handle a focused table keydown first.
    */
   const dispatchKeyDownPlugins = (event: KeyboardEvent) => {
-    if (plugins.length === 0) {
+    if (!plugins.some((plugin) => plugin.onKeyDown)) {
       return false;
     }
 

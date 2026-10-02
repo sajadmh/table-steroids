@@ -20,4 +20,3 @@ export interface SelectionBounds {
     minColumn: number;
     maxColumn: number;
 }
-//# sourceMappingURL=types.d.ts.map

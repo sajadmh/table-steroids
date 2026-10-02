@@ -34,4 +34,3 @@ export declare function getCoordinateKey(rowId: string, columnId: string): strin
  * Builds a logical table model from the current DOM table structure.
  */
 export declare function buildDOMTableModel(table: HTMLTableElement, options?: BuildDOMTableModelOptions): DOMTableModel;
-//# sourceMappingURL=table-model.d.ts.map

@@ -134,6 +134,14 @@ enhanceTable(document.querySelector("table")!, {
 });
 ```
 
+## Package contents
+
+The npm package ships only ESM modules and TypeScript declarations for the root, core, DOM, and React entries. React stays an optional peer dependency and is never bundled. The ESM modules support tree shaking (`sideEffects: false`). The package download size is different from the size your app bundles: apps include only the modules they import.
+
+Standalone browser bundles and bookmarklet assets are generated in `dist` for distribution from GitHub, but are excluded from npm. Source and declaration maps are omitted because their referenced TypeScript sources are not shipped.
+
+Keep callback, `overlay`, and `plugins` references stable (using `useCallback` / `useMemo` when needed) to avoid rebuilding the enhancer on every React render.
+
 ## For non-developers
 
 Enhance any table across the web without installing anything by using a bookmarklet. The bookmarklet is desktop-only.
@@ -146,7 +154,9 @@ Or set up a bookmarklet manually:
 2. Name it `Table Steroids`.
 3. Open [`dist/bookmarklet.txt`](https://github.com/sajadmh/table-steroids/blob/main/dist/bookmarklet.txt) and copy its contents into the bookmark URL or location field. Make sure that the URL starts with `javascript:`.
 
-The bookmarklet tries the latest published build first, then falls back to the embedded build if the page blocks external scripts.
+If you previously copied a bookmarklet that uses the npm CDN, replace it with the newly generated bookmarklet: browser assets are no longer included in new npm releases.
+
+The bookmarklet tries the latest repository build first, then falls back to the embedded build if the page blocks external scripts.
 If the page blocks both paths, the bookmarklet will show `Script not allowed.`.
 Once used, the popup will show `latest version` or `offline version` depending on if the page blocks the script.
 
@@ -226,5 +236,4 @@ Right-pinned columns are out of scope: they compute `left: auto`, so they are tr
 
 ```bash
 npm run build
-npm test
 ```

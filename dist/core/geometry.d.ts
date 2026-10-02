@@ -59,4 +59,3 @@ export declare function getSelectionKey(selection?: Selection | null): string;
  * Produces a stable string key for one cell coordinate.
  */
 export declare function toCoordinateKey(coordinates: CellCoordinates): string;
-//# sourceMappingURL=geometry.d.ts.map

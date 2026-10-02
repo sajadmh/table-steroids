@@ -38,4 +38,3 @@ export function resolveSelectionFocusState(activeSelection, previousSelectedCell
         rangeAnchorCell,
     };
 }
-//# sourceMappingURL=focus-state.js.map

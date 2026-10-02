@@ -6,4 +6,3 @@ export declare function resolveSelectionFocusState(activeSelection: Selection | 
     selectedCell: CellCoordinates | null;
     rangeAnchorCell: CellCoordinates | null;
 };
-//# sourceMappingURL=focus-state.d.ts.map

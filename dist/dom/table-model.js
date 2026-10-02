@@ -186,4 +186,3 @@ export function buildDOMTableModel(table, options = {}) {
         frozenColumnIds,
     };
 }
-//# sourceMappingURL=table-model.js.map

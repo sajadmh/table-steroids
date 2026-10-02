@@ -11,4 +11,3 @@ export declare function resolveCopySelection(selections: Selection[], activeSele
  * Converts a copy plan into tab/newline-delimited spreadsheet text.
  */
 export declare function copySelectionToText(plan: CopySelectionPlan, rows: SelectableItem[], columns: SelectableItem[], getCellValue: (rowId: string, columnId: string) => unknown): string;
-//# sourceMappingURL=copy-plan.d.ts.map

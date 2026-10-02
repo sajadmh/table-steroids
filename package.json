@@ -1,6 +1,6 @@
 {
   "name": "table-steroids",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Spreadsheet-style selection, copy, and range superpowers for native HTML tables.",
   "repository": {
     "type": "git",
@@ -11,8 +11,6 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "unpkg": "./dist/browser.js",
-  "jsdelivr": "./dist/browser.js",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -33,14 +31,20 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/*.js",
-    "dist/*.js.map",
-    "dist/*.d.ts",
-    "dist/*.d.ts.map",
-    "dist/**/*.js",
-    "dist/**/*.js.map",
-    "dist/**/*.d.ts",
-    "dist/**/*.d.ts.map",
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/core.js",
+    "dist/core.d.ts",
+    "dist/dom.js",
+    "dist/dom.d.ts",
+    "dist/react.js",
+    "dist/react.d.ts",
+    "dist/core/**/*.js",
+    "dist/core/**/*.d.ts",
+    "dist/dom/**/*.js",
+    "dist/dom/**/*.d.ts",
+    "dist/react/**/*.js",
+    "dist/react/**/*.d.ts",
     "README.md"
   ],
   "peerDependencies": {
@@ -55,7 +59,10 @@
     "build": "node ./scripts/build.mjs",
     "build:types": "tsc -p ./tsconfig.json",
     "build:browser": "node ./scripts/build-browser-bundle.mjs",
-    "test": "npm run build && node --test --experimental-strip-types ./tests/*.test.ts",
     "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "typescript": "^7.0.2"
   }
 }

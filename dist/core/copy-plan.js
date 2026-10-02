@@ -105,4 +105,3 @@ export function copySelectionToText(plan, rows, columns, getCellValue) {
     }
     return indexedSelections.flatMap((selection) => getSelectionRows(selection, rows, columns, getCellValue)).join("\n");
 }
-//# sourceMappingURL=copy-plan.js.map
